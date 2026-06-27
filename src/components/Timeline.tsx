@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { 
   Scissors, 
   Trash2, 
@@ -440,6 +440,21 @@ export default function Timeline({
     return { minZoom, maxZoom };
   };
 
+  // Keep scrolling/zoom anchored precisely before painting to eliminate visual jumping/bouncing
+  useLayoutEffect(() => {
+    if (!tracksContainerRef.current || zoomAnchorTimeRef.current === null || zoomAnchorMouseXRef.current === null) return;
+    
+    // S_ideal = t_anchor * z - x_anchor
+    const idealScroll = zoomAnchorTimeRef.current * zoom - zoomAnchorMouseXRef.current;
+    
+    // Clamp target scroll position to avoid physical layout boundary jumps
+    const maxScroll = tracksContainerRef.current.scrollWidth - tracksContainerRef.current.clientWidth;
+    const clampedScroll = Math.max(0, Math.min(maxScroll, idealScroll));
+    
+    tracksContainerRef.current.scrollLeft = clampedScroll;
+    setScrollLeftState(clampedScroll);
+  }, [zoom]);
+
   // Zoom animation loop using requestAnimationFrame
   const startZoomAnimationLoop = () => {
     if (animFrameRef.current !== null) return;
@@ -454,26 +469,16 @@ export default function Timeline({
       const targetZoom = targetZoomRef.current;
       const diff = targetZoom - currentZoom;
 
-      if (Math.abs(diff) < 0.05) {
+      if (Math.abs(diff) < 0.01) {
         const finalZoom = targetZoom;
         zoomRef.current = finalZoom;
         setZoom(finalZoom);
-
-        if (zoomAnchorTimeRef.current !== null && zoomAnchorMouseXRef.current !== null) {
-          tracksContainerRef.current.scrollLeft = zoomAnchorTimeRef.current * finalZoom - zoomAnchorMouseXRef.current;
-          setScrollLeftState(tracksContainerRef.current.scrollLeft);
-        }
         animFrameRef.current = null;
       } else {
-        const step = diff * 0.25; // elegant spring lerping
+        const step = diff * 0.18; // smooth exponential spring lerping
         const nextZoom = currentZoom + step;
         zoomRef.current = nextZoom;
         setZoom(nextZoom);
-
-        if (zoomAnchorTimeRef.current !== null && zoomAnchorMouseXRef.current !== null) {
-          tracksContainerRef.current.scrollLeft = zoomAnchorTimeRef.current * nextZoom - zoomAnchorMouseXRef.current;
-          setScrollLeftState(tracksContainerRef.current.scrollLeft);
-        }
         animFrameRef.current = requestAnimationFrame(tick);
       }
     };
@@ -511,7 +516,7 @@ export default function Timeline({
     startZoomAnimationLoop();
   };
 
-  // Zoom/Scroll wheel event handler
+  // Zoom/Scroll wheel event handler (supports Trackpad pinch-to-zoom + standard wheel zooming)
   const handleWheel = (e: WheelEvent) => {
     if (!tracksContainerRef.current) return;
 
@@ -531,7 +536,7 @@ export default function Timeline({
       return;
     }
 
-    // Zooming
+    // Zooming (triggered by standard scrolling, Alt + Scroll, or trackpad pinch gesture with ctrlKey)
     e.preventDefault();
 
     const { minZoom, maxZoom } = getZoomLimits();
@@ -541,6 +546,7 @@ export default function Timeline({
     let anchorX = 0;
 
     if (mouseXInTimeline >= 0 && mouseXInTimeline <= viewportWidth) {
+      // Calculate anchorTime dynamically using zoomRef.current so ongoing zoom transitions don't drift
       anchorTime = (scrollLeft + mouseXInTimeline) / zoomRef.current;
       anchorX = mouseXInTimeline;
     } else {
@@ -557,7 +563,10 @@ export default function Timeline({
     zoomAnchorTimeRef.current = anchorTime;
     zoomAnchorMouseXRef.current = anchorX;
 
-    const zoomFactor = 1.15;
+    // Detect trackpad pinch-zoom (ctrlKey is true for trackpad pinch gestures on standard browsers)
+    const isPinch = e.ctrlKey;
+    const zoomFactor = isPinch ? 1.05 : 1.15;
+    
     let nextTargetZoom = targetZoomRef.current;
     if (e.deltaY < 0) {
       nextTargetZoom = Math.min(maxZoom, targetZoomRef.current * zoomFactor);
