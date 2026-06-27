@@ -24,7 +24,7 @@ import {
   Settings,
   Maximize
 } from 'lucide-react';
-import { VideoProject, TimelineTrack, Clip, MediaType } from '../types';
+import { VideoProject, TimelineTrack, Clip, MediaType, VideoClip, ImageClip, AudioClip, TextClip } from '../types';
 
 // Generates an SVG path representing the volume envelope level across the clip's duration
 const getVolumePathD = (clip: Clip) => {
@@ -98,6 +98,13 @@ const getClipWaveformAmplitudes = (clipId: string, count: number): number[] => {
   return amplitudes;
 };
 
+const formatPlayheadTime = (time: number) => {
+  const mins = Math.floor(time / 60);
+  const secs = Math.floor(time % 60);
+  const ms = Math.floor((time % 1) * 10);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms}`;
+};
+
 interface TimelineProps {
   project: VideoProject;
   currentTime: number;
@@ -119,6 +126,8 @@ interface TimelineProps {
   onDeleteSelectedClips?: () => void;
   onCopyClips?: () => void;
   onPasteClips?: () => void;
+  height?: number;
+  isResizing?: boolean;
 }
 
 export default function Timeline({
@@ -141,7 +150,9 @@ export default function Timeline({
   onSelectClips,
   onDeleteSelectedClips,
   onCopyClips,
-  onPasteClips
+  onPasteClips,
+  height,
+  isResizing
 }: TimelineProps) {
   const [zoom, setZoom] = useState<number>(10);
   const tracksContainerRef = useRef<HTMLDivElement | null>(null);
@@ -176,6 +187,66 @@ export default function Timeline({
     currentX: number;
     currentY: number;
   } | null>(null);
+
+  // Individual track heights state & helpers
+  const [trackHeights, setTrackHeights] = useState<Record<string, number>>(() => {
+    const saved: Record<string, number> = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('vividcut-track-height-')) {
+          const trackId = key.replace('vividcut-track-height-', '');
+          const val = localStorage.getItem(key);
+          if (val) {
+            saved[trackId] = parseInt(val, 10);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error loading track heights:', e);
+    }
+    return saved;
+  });
+
+  const updateTrackHeight = (trackId: string, height: number) => {
+    setTrackHeights(prev => ({
+      ...prev,
+      [trackId]: height
+    }));
+    localStorage.setItem(`vividcut-track-height-${trackId}`, String(height));
+  };
+
+  const resetTrackHeight = (trackId: string) => {
+    setTrackHeights(prev => {
+      const next = { ...prev };
+      delete next[trackId];
+      return next;
+    });
+    localStorage.removeItem(`vividcut-track-height-${trackId}`);
+  };
+
+  // Mouse resizing handler for individual tracks
+  const handleTrackResizeStart = (e: React.MouseEvent, trackId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const startY = e.clientY;
+    const startHeight = trackHeights[trackId] || 64;
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      const newHeight = Math.max(36, Math.min(300, startHeight + deltaY));
+      updateTrackHeight(trackId, newHeight);
+    };
+    
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   const activeSelectedIds = selectedClipIds && selectedClipIds.length > 0 
     ? selectedClipIds 
@@ -215,6 +286,17 @@ export default function Timeline({
     currentSourceOffset: number;
   } | null>(null);
 
+  // External drag state for assets being dragged from Media Library
+  const [externalDrag, setExternalDrag] = useState<{
+    itemType: string;
+    data: any;
+    currentTrackId: string | null;
+    hoverTime: number;
+    snappedTime: number;
+    isValidTarget: boolean;
+    hoverClipId: string | null;
+  } | null>(null);
+
   // Ripple editing state
   const [rippleEnabled, setRippleEnabled] = useState<boolean>(true);
 
@@ -232,6 +314,47 @@ export default function Timeline({
   // Magnetic snapping and guideline states
   const [magnetEnabled, setMagnetEnabled] = useState<boolean>(true);
   const [snapLineTime, setSnapLineTime] = useState<number | null>(null);
+
+  // Hover state for the ruler to show ghost playhead & tooltip
+  const [hoverRulerTime, setHoverRulerTime] = useState<number | null>(null);
+
+  // Toggle track locking status helper
+  const handleToggleLockTrack = (trackId: string) => {
+    if (!onUpdateProject) return;
+    const updatedTracks = project.tracks.map(t => {
+      if (t.id === trackId) {
+        return { ...t, locked: !t.locked };
+      }
+      return t;
+    });
+    onUpdateProject({ ...project, tracks: updatedTracks });
+  };
+
+  // Zoom keys hotkey listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isCtrl = isMac ? e.metaKey : e.ctrlKey;
+      
+      if (isCtrl) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          triggerZoomTo(zoomRef.current * 1.35);
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          triggerZoomTo(zoomRef.current / 1.35);
+        } else if (e.key === '0') {
+          e.preventDefault();
+          const { minZoom } = getZoomLimits();
+          triggerZoomTo(minZoom);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [project.duration]);
 
   // Context Menu State
   interface ContextMenuState {
@@ -296,6 +419,203 @@ export default function Timeline({
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
   }, [contextMenu]);
+
+  // External drag cleanup
+  useEffect(() => {
+    const handleDragEnd = () => {
+      setExternalDrag(null);
+    };
+    window.addEventListener('vividcut-drag-end', handleDragEnd);
+    return () => {
+      window.removeEventListener('vividcut-drag-end', handleDragEnd);
+    };
+  }, []);
+
+  const createClipFromDraggedItem = (itemType: string, data: any, dropTime: number): Clip => {
+    const clipId = `clip_${data.id || Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    
+    if (itemType === 'video') {
+      return {
+        id: clipId,
+        name: data.name,
+        type: 'video',
+        start: dropTime,
+        duration: Math.min(5, data.duration || 5),
+        sourceDuration: data.duration || 5,
+        sourceOffset: 0,
+        url: data.url,
+        proceduralType: data.proceduralType,
+        filter: 'none',
+        volume: 0.5,
+        speed: 1,
+        brightness: 100,
+        contrast: 100,
+        saturation: 100
+      } as VideoClip;
+    } else if (itemType === 'image') {
+      return {
+        id: clipId,
+        name: data.name,
+        type: 'image',
+        start: dropTime,
+        duration: 5,
+        sourceDuration: 5,
+        sourceOffset: 0,
+        url: data.url,
+        filter: 'none',
+        brightness: 100,
+        contrast: 100,
+        saturation: 100
+      } as ImageClip;
+    } else if (itemType === 'audio') {
+      return {
+        id: clipId,
+        name: data.name,
+        type: 'audio',
+        start: dropTime,
+        duration: Math.min(10, data.duration || 10),
+        sourceDuration: data.duration || 10,
+        sourceOffset: 0,
+        url: data.url,
+        synthType: data.synthType || 'none',
+        volume: 0.6,
+        speed: 1
+      } as AudioClip;
+    } else if (itemType === 'text' || itemType === 'sticker') {
+      return {
+        id: clipId,
+        name: data.name || 'Custom Overlay',
+        type: 'text',
+        start: dropTime,
+        duration: data.duration || 5,
+        sourceDuration: data.duration || 5,
+        sourceOffset: 0,
+        url: 'text',
+        text: data.text || data.name || 'Custom Caption Subtitle',
+        fontFamily: data.fontFamily || 'Inter',
+        fontSize: data.fontSize || 32,
+        color: data.color || '#ffffff',
+        backgroundColor: data.backgroundColor || 'transparent',
+        alignment: data.alignment || 'center',
+        animation: data.animation || 'none',
+        positionY: data.positionY ?? 50,
+        stylePreset: data.stylePreset || 'none'
+      } as TextClip;
+    }
+    
+    throw new Error(`Unsupported item type: ${itemType}`);
+  };
+
+  const handleTrackDragOver = (e: React.DragEvent<HTMLDivElement>, track: TimelineTrack) => {
+    e.preventDefault();
+    
+    const draggedItem = (window as any).VividCutDraggedItem;
+    if (!draggedItem) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scrollLeft = tracksContainerRef.current ? tracksContainerRef.current.scrollLeft : 0;
+    
+    const xOnTrack = e.clientX - rect.left - 80;
+    if (xOnTrack < 0) {
+      setExternalDrag(prev => prev ? { ...prev, currentTrackId: null } : null);
+      return;
+    }
+
+    const hoverTime = (scrollLeft + xOnTrack) / zoom;
+    
+    let snappedTime = hoverTime;
+    const snapDistance = 15 / zoom;
+    if (Math.abs(hoverTime - currentTime) < snapDistance) {
+      snappedTime = currentTime;
+    }
+
+    track.clips.forEach(c => {
+      if (Math.abs(hoverTime - c.start) < snapDistance) {
+        snappedTime = c.start;
+      }
+      if (Math.abs(hoverTime - (c.start + c.duration)) < snapDistance) {
+        snappedTime = c.start + c.duration;
+      }
+    });
+
+    let isValidTarget = false;
+    if (draggedItem.itemType === 'video' || draggedItem.itemType === 'image') {
+      isValidTarget = track.type === 'video';
+    } else if (draggedItem.itemType === 'audio') {
+      isValidTarget = track.type === 'audio';
+    } else if (draggedItem.itemType === 'text' || draggedItem.itemType === 'sticker') {
+      isValidTarget = track.type === 'text';
+    } else if (draggedItem.itemType === 'effect' || draggedItem.itemType === 'transition') {
+      isValidTarget = true;
+    }
+
+    let hoverClipId: string | null = null;
+    if (draggedItem.itemType === 'effect' || draggedItem.itemType === 'transition') {
+      const clipUnderMouse = track.clips.find(c => hoverTime >= c.start && hoverTime <= c.start + c.duration);
+      if (clipUnderMouse) {
+        hoverClipId = clipUnderMouse.id;
+      }
+    }
+
+    setExternalDrag({
+      itemType: draggedItem.itemType,
+      data: draggedItem.data,
+      currentTrackId: track.id,
+      hoverTime,
+      snappedTime,
+      isValidTarget,
+      hoverClipId
+    });
+  };
+
+  const handleTrackDragLeave = () => {
+    setExternalDrag(prev => prev ? { ...prev, currentTrackId: null } : null);
+  };
+
+  const handleTrackDrop = (e: React.DragEvent<HTMLDivElement>, track: TimelineTrack) => {
+    e.preventDefault();
+    
+    if (!externalDrag || !externalDrag.isValidTarget) {
+      setExternalDrag(null);
+      return;
+    }
+    
+    const { itemType, data, snappedTime, hoverClipId } = externalDrag;
+    
+    if (itemType === 'effect' || itemType === 'transition') {
+      if (hoverClipId) {
+        const updatedClips = track.clips.map(c => {
+          if (c.id === hoverClipId) {
+            if (itemType === 'effect') {
+              return {
+                ...c,
+                [data.key]: true
+              };
+            } else {
+              return {
+                ...c,
+                transitionType: data.type || data.transitionType || 'fade',
+                transitionDuration: c.transitionDuration || 1.0
+              };
+            }
+          }
+          return c;
+        });
+        onUpdateTrackClips(track.id, updatedClips);
+        const targetClip = updatedClips.find(c => c.id === hoverClipId);
+        if (targetClip) {
+          onSelectClip(targetClip);
+        }
+      }
+    } else {
+      const newClip = createClipFromDraggedItem(itemType, data, snappedTime);
+      const updatedClips = [...track.clips, newClip].sort((a, b) => a.start - b.start);
+      onUpdateTrackClips(track.id, updatedClips);
+      onSelectClip(newClip);
+    }
+    
+    setExternalDrag(null);
+  };
 
   const handleCopyAction = () => {
     if (onCopyClips) {
@@ -1139,9 +1459,12 @@ export default function Timeline({
       const selectedIds: string[] = [];
       let primary: Clip | null = null;
 
-      project.tracks.forEach((track, trackIdx) => {
-        const trackTop = trackIdx * 64;
-        const trackBottom = (trackIdx + 1) * 64;
+      let accumulatedTop = 0;
+      project.tracks.forEach((track) => {
+        const trackHeight = trackHeights[track.id] || 64;
+        const trackTop = accumulatedTop;
+        const trackBottom = accumulatedTop + trackHeight;
+        accumulatedTop += trackHeight;
 
         const verticalOverlap = !(trackBottom <= top || trackTop >= bottom);
         if (verticalOverlap) {
@@ -1679,20 +2002,27 @@ export default function Timeline({
     isDragging: boolean
   ) => {
     // Style colors based on clip type with premium gradients, glow states and border effects
-    const colorStyles = {
-      video: isSelected 
-        ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-300 ring-2 ring-indigo-400/40 shadow-[0_4px_16px_rgba(99,102,241,0.45)] z-20 font-semibold' 
-        : 'bg-gradient-to-r from-indigo-950/85 to-indigo-900/65 hover:from-indigo-900 hover:to-indigo-850 border-indigo-500/25 hover:border-indigo-500/50 text-indigo-200 hover:text-white hover:shadow-md hover:shadow-indigo-950/20',
-      image: isSelected 
-        ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white border-blue-300 ring-2 ring-blue-400/40 shadow-[0_4px_16px_rgba(59,130,246,0.45)] z-20 font-semibold' 
-        : 'bg-gradient-to-r from-blue-950/85 to-blue-900/65 hover:from-blue-900 hover:to-blue-850 border-blue-500/25 hover:border-blue-500/50 text-blue-200 hover:text-white hover:shadow-md hover:shadow-blue-950/20',
-      audio: isSelected 
-        ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-emerald-300 ring-2 ring-emerald-400/40 shadow-[0_4px_16px_rgba(16,185,129,0.45)] z-20 font-semibold' 
-        : 'bg-gradient-to-r from-emerald-950/85 to-emerald-900/65 hover:from-emerald-900 hover:to-emerald-850 border-emerald-500/25 hover:border-emerald-500/50 text-emerald-200 hover:text-white hover:shadow-md hover:shadow-emerald-950/20',
-      text: isSelected 
-        ? 'bg-gradient-to-r from-violet-600 to-violet-500 text-white border-violet-300 ring-2 ring-violet-400/40 shadow-[0_4px_16px_rgba(139,92,246,0.45)] z-20 font-semibold' 
-        : 'bg-gradient-to-r from-violet-950/85 to-violet-900/65 hover:from-violet-900 hover:to-violet-850 border-violet-500/25 hover:border-violet-500/50 text-violet-200 hover:text-white hover:shadow-md hover:shadow-violet-950/20',
-    }[clip.type];
+    const colorStyles = track.locked
+      ? {
+          video: 'bg-[#1e1e21] border-slate-700/40 text-slate-400',
+          image: 'bg-[#1e1e21] border-slate-700/40 text-slate-400',
+          audio: 'bg-[#1e1e21] border-slate-700/40 text-slate-400',
+          text: 'bg-[#1e1e21] border-slate-700/40 text-slate-400',
+        }[clip.type]
+      : {
+          video: isSelected 
+            ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-white selected-clip-pulse shadow-[0_0_15px_rgba(99,102,241,0.65)] z-20 font-semibold' 
+            : 'bg-gradient-to-r from-indigo-950/85 to-indigo-900/65 hover:from-indigo-900 hover:to-indigo-850 border-indigo-500/25 hover:border-indigo-500/50 text-indigo-200 hover:text-white hover:shadow-md hover:shadow-indigo-950/20',
+          image: isSelected 
+            ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white border-white selected-clip-pulse shadow-[0_0_15px_rgba(59,130,246,0.65)] z-20 font-semibold' 
+            : 'bg-gradient-to-r from-blue-950/85 to-blue-900/65 hover:from-blue-900 hover:to-blue-850 border-blue-500/25 hover:border-blue-500/50 text-blue-200 hover:text-white hover:shadow-md hover:shadow-blue-950/20',
+          audio: isSelected 
+            ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-white selected-clip-pulse shadow-[0_0_15px_rgba(16,185,129,0.65)] z-20 font-semibold' 
+            : 'bg-gradient-to-r from-emerald-950/85 to-emerald-900/65 hover:from-emerald-900 hover:to-emerald-850 border-emerald-500/25 hover:border-emerald-500/50 text-emerald-200 hover:text-white hover:shadow-md hover:shadow-emerald-950/20',
+          text: isSelected 
+            ? 'bg-gradient-to-r from-violet-600 to-violet-500 text-white border-white selected-clip-pulse shadow-[0_0_15px_rgba(139,92,246,0.65)] z-20 font-semibold' 
+            : 'bg-gradient-to-r from-violet-950/85 to-violet-900/65 hover:from-violet-900 hover:to-violet-850 border-violet-500/25 hover:border-violet-500/50 text-violet-200 hover:text-white hover:shadow-md hover:shadow-violet-950/20',
+        }[clip.type];
 
     const leftOffset = renderStart * zoom;
     const width = clip.duration * zoom;
@@ -1705,25 +2035,56 @@ export default function Timeline({
       ? 'transition-none' 
       : 'transition-all duration-150 ease-out';
 
-    const dragStyles = isDragging 
-      ? 'opacity-40 pointer-events-none scale-[1.01] border-cyan-400 ring-2 ring-cyan-400/40 shadow-2xl z-30 cursor-grabbing'
-      : isTrimmingThis
-        ? 'ring-2 ring-amber-500 border-amber-400 z-30 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-        : 'cursor-grab active:cursor-grabbing hover:scale-[1.002] active:scale-[0.998]';
+    const dragStyles = track.locked
+      ? 'opacity-60 cursor-not-allowed grayscale'
+      : isDragging 
+        ? 'opacity-40 pointer-events-none scale-[1.01] border-cyan-400 ring-2 ring-cyan-400/40 shadow-2xl z-30 cursor-grabbing'
+        : isTrimmingThis
+          ? 'ring-2 ring-amber-500 border-amber-400 z-30 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+          : 'cursor-grab active:cursor-grabbing hover:scale-[1.002] active:scale-[0.998]';
+
+    const isHoveredByFx = externalDrag && externalDrag.hoverClipId === clip.id;
 
     return (
       <div
         key={clip.id}
-        onMouseDown={isDragging || isTrimmingThis ? undefined : (e) => handleClipMouseDown(e, track.id, clip)}
+        onMouseDown={isDragging || isTrimmingThis || track.locked ? undefined : (e) => handleClipMouseDown(e, track.id, clip)}
         onContextMenu={(e) => handleClipContextMenu(e, track, clip)}
-        className={`absolute top-2 bottom-2 border rounded-md px-2 flex flex-col justify-center overflow-hidden select-none ${colorStyles} ${dragStyles} ${transitionClass}`}
+        className={`absolute top-2 bottom-2 border rounded-md px-2 flex flex-col justify-center overflow-hidden select-none ${colorStyles} ${dragStyles} ${transitionClass} ${
+          isHoveredByFx ? 'border-yellow-400 border-2 scale-[1.02] ring-4 ring-yellow-400/30 z-20' : ''
+        }`}
         style={{ 
           left: `${leftOffset}px`, 
           width: `${width}px` 
         }}
       >
+        {/* Lock indicator */}
+        {track.locked && (
+          <div className="absolute right-1.5 top-1.5 bg-black/50 p-1 rounded-full text-amber-500 z-10 border border-amber-500/20 shadow">
+            <Lock size={10} />
+          </div>
+        )}
+
+        {/* Selected corners handle indicator overlay */}
+        {isSelected && !track.locked && (
+          <>
+            <div className="absolute inset-0 border-[2px] border-white rounded-md pointer-events-none z-30 shadow-[inset_0_0_12px_rgba(255,255,255,0.35)]" />
+            <div className="absolute top-[-2px] left-[-2px] w-2 h-2 bg-white rounded-sm border border-slate-950 pointer-events-none z-30 shadow" />
+            <div className="absolute top-[-2px] right-[-2px] w-2 h-2 bg-white rounded-sm border border-slate-950 pointer-events-none z-30 shadow" />
+            <div className="absolute bottom-[-2px] left-[-2px] w-2 h-2 bg-white rounded-sm border border-slate-950 pointer-events-none z-30 shadow" />
+            <div className="absolute bottom-[-2px] right-[-2px] w-2 h-2 bg-white rounded-sm border border-slate-950 pointer-events-none z-30 shadow" />
+          </>
+        )}
+
+        {isHoveredByFx && (
+          <div className="absolute inset-0 bg-yellow-500/10 border-2 border-yellow-400 rounded-md flex items-center justify-center z-10 pointer-events-none animate-pulse">
+            <span className="text-[9px] text-yellow-300 font-bold tracking-wider uppercase px-1.5 py-0.5 bg-slate-900/95 rounded border border-yellow-500/50 shadow-md">
+              Apply {externalDrag.data.label}
+            </span>
+          </div>
+        )}
         {/* Left Trim Handle - Sleek glowing handle bar */}
-        {!anyDragOrTrimActive && (
+        {!anyDragOrTrimActive && !track.locked && (
           <div 
             onMouseDown={(e) => handleLeftTrimMouseDown(e, track.id, clip)}
             className="absolute left-0 top-0 bottom-0 w-2.5 hover:w-3.5 hover:bg-amber-500 bg-black/20 border-r border-white/5 hover:border-amber-400/30 cursor-ew-resize transition-all z-20 flex items-center justify-center group"
@@ -1736,7 +2097,7 @@ export default function Timeline({
         {/* Highlight Active Left Handle while Trimming */}
         {isTrimmingThis && trimState.edge === 'left' && (
           <div 
-            className="absolute left-0 top-0 bottom-0 w-2.5 bg-amber-500 border-r border-black/30 cursor-ew-resize z-20 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+            className="absolute left-0 top-0 bottom-0 w-2.5 bg-amber-500 border-r border-[#1e1e21] cursor-ew-resize z-20 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
           />
         )}
 
@@ -1775,7 +2136,7 @@ export default function Timeline({
         </div>
 
         {/* Right Trim Handle - Sleek glowing handle bar */}
-        {!anyDragOrTrimActive && (
+        {!anyDragOrTrimActive && !track.locked && (
           <div 
             onMouseDown={(e) => handleRightTrimMouseDown(e, track.id, clip)}
             className="absolute right-0 top-0 bottom-0 w-2.5 hover:w-3.5 hover:bg-amber-500 bg-black/20 border-l border-white/5 hover:border-amber-400/30 cursor-ew-resize transition-all z-20 flex items-center justify-center group"
@@ -1872,11 +2233,60 @@ export default function Timeline({
       id="video-timeline"
       ref={timelineOuterRef}
       onMouseDown={handleTimelineMouseDown}
-      className="bg-[#121214] border-t border-[#2A2A2D] flex flex-col shrink-0 select-none h-[300px]"
+      className="bg-[#121214] border-t border-[#2A2A2D] flex flex-col shrink-0 select-none"
+      style={
+        height !== undefined 
+          ? { 
+              height: `${height}px`,
+              transition: isResizing ? 'none' : 'height 300ms cubic-bezier(0.16, 1, 0.3, 1)'
+            } 
+          : { height: '300px' }
+      }
       onMouseMove={handleTimelineMouseMove}
       onMouseUp={handleTimelineMouseUp}
       onMouseLeave={handleTimelineMouseUp}
     >
+      <style>{`
+        /* Professional custom scrollbar for track lane scrollareas */
+        .tracks-scrollbar::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .tracks-scrollbar::-webkit-scrollbar-track {
+          background: #0d0d0f;
+        }
+        .tracks-scrollbar::-webkit-scrollbar-thumb {
+          background: #252529;
+          border-radius: 4px;
+          border: 1.5px solid #0d0d0f;
+        }
+        .tracks-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #4f46e5;
+        }
+        .tracks-scrollbar::-webkit-scrollbar-corner {
+          background: #0d0d0f;
+        }
+
+        /* Diagonal warning/projective stripes for placements */
+        .bg-stripes {
+          background-image: linear-gradient(45deg, rgba(0, 229, 255, 0.15) 25%, transparent 25%, transparent 50%, rgba(0, 229, 255, 0.15) 50%, rgba(0, 229, 255, 0.15) 75%, transparent 75%, transparent);
+          background-size: 24px 24px;
+          animation: stripes-move 1s linear infinite;
+        }
+        @keyframes stripes-move {
+          0% { background-position: 0 0; }
+          100% { background-position: 24px 0; }
+        }
+
+        /* Ambient selection pulse glow for professional feeling */
+        @keyframes selection-pulse {
+          0%, 100% { box-shadow: 0 0 12px rgba(99, 102, 241, 0.45), inset 0 0 8px rgba(255, 255, 255, 0.3); }
+          50% { box-shadow: 0 0 18px rgba(99, 102, 241, 0.75), inset 0 0 14px rgba(255, 255, 255, 0.5); }
+        }
+        .selected-clip-pulse {
+          animation: selection-pulse 2s infinite ease-in-out;
+        }
+      `}</style>
       {/* Timeline Controls / Split / Delete actions */}
       <div className="flex items-center justify-between border-b border-[#2A2A2D] px-4 py-2 shrink-0 bg-[#0F0F10]">
         <div className="flex items-center gap-2">
@@ -2026,17 +2436,35 @@ export default function Timeline({
       <div 
         ref={tracksContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-x-auto overflow-y-auto relative flex flex-col"
+        className="flex-1 overflow-x-auto overflow-y-auto relative flex flex-col tracks-scrollbar"
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          if (e.clientX < rect.left || e.clientX >= rect.right || e.clientY < rect.top || e.clientY >= rect.bottom) {
+            setExternalDrag(null);
+          }
+        }}
       >
         {/* Time Ruler / Scrubber Clickable Strip */}
         <div 
           id="timeline-ruler"
-          className="h-9 border-b border-[#2A2A2D] relative bg-[#0F0F10]/60 cursor-pointer select-none sticky top-0 z-20 shrink-0"
+          className="h-9 border-b border-[#2A2A2D] relative bg-[#141416]/90 backdrop-blur-sm cursor-pointer select-none sticky top-0 z-20 shrink-0 shadow-sm"
           onMouseDown={handleRulerMouseDown}
           onClick={handleRulerClickOrDrag}
+          onMouseMove={(e) => {
+            if (!tracksContainerRef.current) return;
+            const rect = tracksContainerRef.current.getBoundingClientRect();
+            const scrollLeft = tracksContainerRef.current.scrollLeft;
+            const mouseX = e.clientX - rect.left + scrollLeft - 80;
+            const hoverTime = Math.max(0, Math.min(project.duration, mouseX / zoom));
+            setHoverRulerTime(hoverTime);
+          }}
+          onMouseLeave={() => {
+            setHoverRulerTime(null);
+          }}
         >
           {/* Label Spacer */}
-          <div className="sticky left-0 top-0 bottom-0 w-20 bg-[#0F0F10] border-r border-[#2A2A2D] flex items-center justify-center text-[10px] font-bold text-slate-500 uppercase tracking-wider z-30">
+          <div className="sticky left-0 top-0 bottom-0 w-20 bg-gradient-to-b from-[#1c1c1e] to-[#121214] border-r border-[#2A2A2D] flex items-center justify-center text-[9px] font-bold text-slate-300 uppercase tracking-wider z-30 shadow-[4px_0_12px_rgba(0,0,0,0.5)]">
             Ruler
           </div>
 
@@ -2079,7 +2507,7 @@ export default function Timeline({
           
           {/* Vertical Playhead Scrubber Line Indicator */}
           <div 
-            className="absolute top-0 bottom-0 w-[1.5px] bg-indigo-500 z-40 pointer-events-none shadow-[0_0_8px_rgba(99,102,241,0.6)]"
+            className="absolute top-0 bottom-0 w-[1.5px] bg-[#FF3B30] z-40 pointer-events-none shadow-[0_0_10px_rgba(255,59,48,0.7)]"
             style={{ left: `${currentTime * zoom + 80}px` }}
           >
             {/* Playhead Cap (Handle) - Designed like a professional editing cursor */}
@@ -2088,43 +2516,82 @@ export default function Timeline({
                 e.stopPropagation();
                 setIsScrubbing(true);
               }}
-              className="absolute -top-9 -left-[7.5px] w-4 h-5 bg-indigo-500 border border-indigo-400 rounded-t shadow-[0_2px_6px_rgba(0,0,0,0.5)] pointer-events-auto cursor-col-resize flex flex-col items-center justify-center py-1 group/playhead transition-transform hover:scale-105 active:scale-95"
+              className="absolute -top-8 -left-[9px] w-[19px] h-5 bg-gradient-to-b from-[#EF4444] to-[#C92A2A] border border-[#FF6B6B] rounded-t-sm shadow-[0_3px_8px_rgba(0,0,0,0.6)] pointer-events-auto cursor-col-resize flex flex-col items-center justify-center group/playhead transition-all hover:scale-110 active:scale-95 z-50"
             >
               {/* Downward pointing triangle at the bottom of the handle */}
-              <div className="absolute top-full left-0 right-0 h-0 w-0 border-t-[5px] border-t-indigo-500 border-x-[7.5px] border-x-transparent" />
+              <div className="absolute top-full left-0 right-0 h-0 w-0 border-t-[6px] border-t-[#C92A2A] border-x-[9.5px] border-x-transparent pointer-events-none" />
               
-              {/* Grip ridges */}
-              <div className="flex gap-[1.5px] items-center justify-center pointer-events-none">
-                <div className="w-[1px] h-2 bg-white/40" />
-                <div className="w-[1px] h-2 bg-white/40" />
-                <div className="w-[1px] h-2 bg-white/40" />
+              {/* Core playhead glowing line inside handle */}
+              <div className="w-[1.5px] h-3 bg-white/95 rounded-full shadow-[0_0_3px_#fff]" />
+
+              {/* Floating Real-time time display badge inside/above playhead */}
+              <div className="absolute -top-[23px] left-1/2 -translate-x-1/2 bg-[#FF3B30] text-white text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md shadow-lg border border-red-300/30 whitespace-nowrap pointer-events-none opacity-0 group-hover/playhead:opacity-100 transition-opacity flex items-center gap-1">
+                <span>{formatPlayheadTime(currentTime)}</span>
               </div>
             </div>
           </div>
 
-          {/* Magnetic Guideline Indicator with Professional Badge */}
-          {snapLineTime !== null && (
+          {/* Ruler Hover Ghost Playhead Scrubber */}
+          {hoverRulerTime !== null && !isScrubbing && (
             <div 
-              className="absolute top-0 bottom-0 w-px border-l-2 border-dashed border-cyan-400 z-20 pointer-events-none"
-              style={{ left: `${snapLineTime * zoom + 80}px` }}
+              className="absolute top-0 bottom-0 w-[1px] bg-slate-400/30 z-30 pointer-events-none border-l border-dashed border-slate-400/20"
+              style={{ left: `${hoverRulerTime * zoom + 80}px` }}
             >
-              <div className="absolute -top-[27px] -left-[28px] bg-cyan-500 text-slate-950 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow-lg flex items-center gap-1 border border-cyan-300">
-                <Magnet size={9} className="stroke-[2.5]" />
-                <span>{snapLineTime.toFixed(2)}s</span>
+              {/* Mini Ghost Indicator */}
+              <div className="absolute top-1 -left-[20px] bg-slate-800/90 text-slate-300 text-[8px] font-mono px-1 py-0.5 rounded border border-slate-600 shadow pointer-events-none">
+                {formatPlayheadTime(hoverRulerTime)}
               </div>
             </div>
           )}
 
-          {project.tracks.map((track) => (
+          {/* Magnetic Guideline Indicator with Professional Badge */}
+          {(snapLineTime !== null || (externalDrag && externalDrag.snappedTime !== externalDrag.hoverTime)) && (
             <div 
-              key={track.id} 
-              className={`h-[64px] border-b border-[#2A2A2D] flex items-center relative group select-none transition-colors duration-150 ${
+              className="absolute top-0 bottom-0 w-[2px] bg-cyan-400 z-40 pointer-events-none shadow-[0_0_10px_rgba(0,229,255,0.8)]"
+              style={{ left: `${(snapLineTime !== null ? snapLineTime : (externalDrag ? externalDrag.snappedTime : 0)) * zoom + 80}px` }}
+            >
+              {/* Pulsing indicator dot on top of the playhead / ruler height */}
+              <div className="absolute top-0 -left-[4px] w-2.5 h-2.5 bg-cyan-400 rotate-45 border border-white shadow-[0_0_6px_rgba(0,229,255,1)]" />
+
+              <div className="absolute -top-[32px] -left-[32px] bg-gradient-to-r from-cyan-500 to-teal-500 text-slate-950 text-[9px] font-mono font-bold px-2 py-0.5 rounded shadow-[0_2px_8px_rgba(0,229,255,0.4)] flex items-center gap-1 border border-cyan-300">
+                <Magnet size={9} className="stroke-[2.5] animate-pulse" />
+                <span>{(snapLineTime !== null ? snapLineTime : (externalDrag ? externalDrag.snappedTime : 0)).toFixed(2)}s</span>
+              </div>
+            </div>
+          )}
+
+          {project.tracks.map((track) => {
+            const trackHeight = trackHeights[track.id] || 64;
+            return (
+              <div 
+                key={track.id} 
+                onDragOver={(e) => handleTrackDragOver(e, track)}
+                onDragLeave={handleTrackDragLeave}
+                onDrop={(e) => handleTrackDrop(e, track)}
+                className={`border-b border-[#2A2A2D] flex items-center relative group/track select-none transition-colors duration-150 ${
                 dragState && dragState.currentTrackId === track.id
                   ? dragState.isValidTarget
                     ? 'bg-indigo-950/20 border-indigo-500/30'
                     : 'bg-red-950/15 border-red-500/20'
                   : ''
+              } ${
+                externalDrag
+                  ? externalDrag.currentTrackId === track.id
+                    ? externalDrag.isValidTarget
+                      ? 'bg-cyan-950/30 border-cyan-500/50 ring-1 ring-cyan-500/20'
+                      : 'bg-red-950/20 border-red-500/30 ring-1 ring-red-500/20'
+                    : (externalDrag.itemType === 'effect' || externalDrag.itemType === 'transition')
+                      ? 'hover:bg-slate-800/10'
+                      : (externalDrag.itemType === 'video' || externalDrag.itemType === 'image') && track.type === 'video'
+                        ? 'bg-cyan-950/10 border-cyan-600/20 border-dashed'
+                        : externalDrag.itemType === 'audio' && track.type === 'audio'
+                          ? 'bg-cyan-950/10 border-cyan-600/20 border-dashed'
+                          : (externalDrag.itemType === 'text' || externalDrag.itemType === 'sticker') && track.type === 'text'
+                            ? 'bg-cyan-950/10 border-cyan-600/20 border-dashed'
+                            : 'opacity-40'
+                  : ''
               }`}
+              style={{ height: `${trackHeight}px` }}
               onMouseEnter={() => {
                 if (dragState && draggedInfo) {
                   const isValid = track.type === draggedInfo.clip.type;
@@ -2137,17 +2604,25 @@ export default function Timeline({
               }}
             >
               {/* Track Info sidebar label */}
-              <div className="sticky left-0 top-0 bottom-0 w-20 bg-[#0F0F10] border-r border-[#2A2A2D] flex flex-col justify-center px-2 py-1 shrink-0 z-30 select-none">
+              <div className="sticky left-0 top-0 bottom-0 w-20 bg-gradient-to-b from-[#18181a] to-[#0f0f10] border-r border-[#2A2A2D] flex flex-col justify-center px-2 py-1 shrink-0 z-30 select-none shadow-[4px_0_12px_rgba(0,0,0,0.5)] h-full">
                 <span className="text-[10px] font-bold text-slate-300 truncate tracking-wide block capitalize">{track.name}</span>
                 
                 {/* Track controls */}
-                <div className="flex items-center gap-1.5 mt-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 mt-1 opacity-60 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => onToggleMuteTrack(track.id)}
-                    className="p-0.5 hover:bg-[#232326] rounded text-slate-500 hover:text-slate-300 cursor-pointer"
+                    className="p-0.5 hover:bg-[#232326] rounded text-slate-500 hover:text-red-400 cursor-pointer"
                     title={track.muted ? 'Unmute Track' : 'Mute Track'}
                   >
                     {track.muted ? <VolumeX size={10} className="text-red-500" /> : <Volume2 size={10} />}
+                  </button>
+
+                  <button
+                    onClick={() => handleToggleLockTrack(track.id)}
+                    className="p-0.5 hover:bg-[#232326] rounded text-slate-500 hover:text-amber-500 cursor-pointer ml-0.5"
+                    title={track.locked ? 'Unlock Track' : 'Lock Track'}
+                  >
+                    {track.locked ? <Lock size={10} className="text-amber-500" /> : <Unlock size={10} />}
                   </button>
 
                   <button
@@ -2178,6 +2653,28 @@ export default function Timeline({
                     }}
                   >
                     <span className="text-[9px] text-cyan-300 font-mono font-bold">Drop Here</span>
+                  </div>
+                )}
+
+                {/* External placement preview indicator */}
+                {externalDrag && externalDrag.currentTrackId === track.id && externalDrag.isValidTarget && (
+                  <div
+                    className="absolute top-2 bottom-2 border-2 border-dashed border-cyan-400 bg-cyan-400/20 rounded-md flex items-center justify-center pointer-events-none z-10 animate-pulse"
+                    style={{
+                      left: `${externalDrag.snappedTime * zoom}px`,
+                      width: `${((externalDrag.itemType === 'effect' || externalDrag.itemType === 'transition') ? 3 : (externalDrag.data?.duration || 5)) * zoom}px`
+                    }}
+                  >
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="text-[10px] text-cyan-300 font-bold truncate max-w-[120px] px-1">
+                        {externalDrag.itemType === 'effect' || externalDrag.itemType === 'transition'
+                          ? (externalDrag.hoverClipId ? `Apply ${externalDrag.data.label}` : 'Hover over a clip')
+                          : `Add: ${externalDrag.data?.name || externalDrag.itemType}`}
+                      </span>
+                      <span className="text-[8px] text-cyan-400/80 font-mono leading-none mt-0.5">
+                        {externalDrag.snappedTime.toFixed(2)}s
+                      </span>
+                    </div>
                   </div>
                 )}
 
@@ -2263,8 +2760,20 @@ export default function Timeline({
                   }
                 })()}
               </div>
+
+              {/* Individual Track bottom border resize handle */}
+              <div
+                onMouseDown={(e) => handleTrackResizeStart(e, track.id)}
+                onDoubleClick={() => resetTrackHeight(track.id)}
+                className="absolute bottom-0 left-0 right-0 h-1 cursor-row-resize bg-transparent hover:bg-indigo-500/80 z-40 transition-colors duration-100 flex items-center justify-center group-hover/track:bg-slate-800/20"
+                title="Drag track edge to resize height. Double-click to reset."
+              >
+                {/* Visual grab highlight line */}
+                <div className="w-16 h-[2px] rounded-full bg-slate-500/0 group-hover/track:bg-indigo-500/50 transition-all pointer-events-none" />
+              </div>
             </div>
-          ))}
+          );
+        })}
         </div>
       </div>
 

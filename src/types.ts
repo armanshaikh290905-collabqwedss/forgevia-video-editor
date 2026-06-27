@@ -113,6 +113,7 @@ export interface TimelineTrack {
   clips: Clip[];
   muted: boolean;
   locked: boolean;
+  height?: number;
 }
 
 export interface VideoProject {

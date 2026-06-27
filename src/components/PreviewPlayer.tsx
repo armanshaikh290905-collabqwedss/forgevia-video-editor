@@ -12,7 +12,9 @@ import {
   Film,
   RotateCcw,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 import { VideoProject, Clip, VideoClip, ImageClip, TextClip, AudioClip } from '../types';
 import { drawProceduralFrame, ProceduralAudioEngine } from '../utils/procedural';
@@ -172,6 +174,7 @@ interface PreviewPlayerProps {
   isPlaying: boolean;
   onPlayPause: (playing: boolean) => void;
   selectedClip: Clip | null;
+  style?: React.CSSProperties;
 }
 
 export default function PreviewPlayer({
@@ -180,7 +183,8 @@ export default function PreviewPlayer({
   onTimeUpdate,
   isPlaying,
   onPlayPause,
-  selectedClip
+  selectedClip,
+  style
 }: PreviewPlayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   
@@ -197,6 +201,79 @@ export default function PreviewPlayer({
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const videoCacheRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const audioCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // Independent preview resizer states
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 700, height: 500 });
+  const [isResizingPreview, setIsResizingPreview] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'fit' | 'custom'>(() => {
+    const saved = localStorage.getItem('vividcut-preview-mode');
+    return (saved as 'fit' | 'custom') || 'fit';
+  });
+  const [customWidth, setCustomWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('vividcut-preview-custom-width');
+    return saved ? parseInt(saved, 10) : 540;
+  });
+
+  // Observe outer container dimensions
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        setContainerSize({ width: width || 700, height: height || 500 });
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Remember the preferred size options in local storage
+  useEffect(() => {
+    localStorage.setItem('vividcut-preview-mode', previewMode);
+  }, [previewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('vividcut-preview-custom-width', String(customWidth));
+  }, [customWidth]);
+
+  // Compute size boundaries for perfect fit-to-window or custom sizing
+  const aspectRatio = project.width / project.height;
+  const paddingX = 48; // horizontal safe padding
+  const paddingY = 160; // vertical offset for toolbar, control bar, margins
+  const maxFitWidth = Math.max(200, containerSize.width - paddingX);
+  const maxFitHeight = Math.max(150, containerSize.height - paddingY);
+  const fitWidth = Math.min(maxFitWidth, maxFitHeight * aspectRatio);
+
+  const activeWidth = previewMode === 'fit' ? fitWidth : Math.min(customWidth, containerSize.width - 24);
+
+  // Drag hander for symmetrical scaling from both margins
+  const handleSymmetricalResizeStart = (e: React.MouseEvent, direction: 1 | -1) => {
+    e.preventDefault();
+    setIsResizingPreview(true);
+    setPreviewMode('custom');
+    const startX = e.clientX;
+    const startWidth = activeWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      let newWidth = startWidth + deltaX * 2 * direction;
+      const minW = 240;
+      const maxW = Math.max(1600, containerSize.width);
+      if (newWidth < minW) newWidth = minW;
+      if (newWidth > maxW) newWidth = maxW;
+      setCustomWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingPreview(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   // FPS ticker
   const animationFrameRef = useRef<number | null>(null);
@@ -1064,121 +1141,239 @@ export default function PreviewPlayer({
   };
 
   return (
-    <div id="video-preview-panel" className="flex-1 bg-[#0F0F10] flex flex-col justify-center items-center p-4 relative border-b border-[#2A2A2D]">
-      
-      {/* Player Canvas Frame Box */}
-      <div 
-        className="relative w-full max-w-[700px] bg-[#161618] rounded-lg shadow-2xl overflow-hidden border border-[#2A2A2D]"
-        style={{ aspectRatio: `${project.width} / ${project.height}`, maxHeight: '55vh' }}
-      >
-        <canvas
-          id="preview-canvas"
-          ref={canvasRef}
-          width={project.width}
-          height={project.height}
-          className="w-full h-full object-contain"
-        />
-
-        {/* Loading Overlay */}
-        {renderProgress !== null && (
-          <div className="absolute inset-0 bg-[#0F0F10]/95 flex flex-col items-center justify-center p-6 text-center animate-fadeIn z-30">
-            <RefreshCw size={36} className="text-indigo-400 animate-spin mb-4" />
-            <span className="text-base font-bold text-white uppercase tracking-wider">Rendering Digital Video</span>
-            <p className="text-xs text-slate-400 mt-1 max-w-[320px]">
-              Slicing frames and mixing procedural tracks client-side. Hold tight...
-            </p>
-            <div className="w-64 bg-[#232326] h-2 rounded-full overflow-hidden mt-4 border border-[#2A2A2D]">
-              <div 
-                className="bg-gradient-to-r from-indigo-600 to-violet-600 h-full transition-all duration-100"
-                style={{ width: `${renderProgress}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono font-bold text-slate-500 mt-2">{renderProgress}% COMPLETE</span>
-          </div>
-        )}
-
-        {/* Selected Clip Indicator Watermark */}
-        {selectedClip && (
-          <div className="absolute top-3 left-3 bg-[#0F0F10]/90 backdrop-blur border border-[#2A2A2D] px-2 py-1 rounded text-[9px] font-mono text-slate-400 flex items-center gap-1.5 pointer-events-none">
-            <Film size={10} className="text-indigo-400" />
-            ACTIVE LAYER: {selectedClip.name.toUpperCase()}
-          </div>
-        )}
-      </div>
-
-      {/* Control Rail Panel */}
-      <div className="w-full max-w-[700px] mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-[#161618] px-4 py-3 rounded-lg border border-[#2A2A2D] shadow-lg">
-        {/* Timestamp */}
-        <div className="flex items-center gap-2 shrink-0 justify-center">
-          <span className="text-xs font-mono font-bold text-indigo-400 bg-[#0F0F10] px-2.5 py-1 rounded border border-[#2A2A2D]">
-            {formatTime(currentTime)}
+    <div 
+      id="video-preview-panel" 
+      ref={containerRef}
+      className="flex-1 bg-[#0F0F10] flex flex-col relative border-b border-[#2A2A2D] overflow-hidden select-none"
+      style={style}
+    >
+      {/* Dynamic Monitor Control Toolbar */}
+      <div className="px-4 py-2.5 bg-[#121214] border-b border-[#2A2A2D] flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <Film size={13} className="text-indigo-400 animate-pulse" />
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-200">
+            Monitor Preview
           </span>
-          <span className="text-[10px] text-slate-500 font-mono">
-            / {formatTime(project.duration)}
+          <span className="text-[9px] text-slate-500 font-mono bg-slate-900/40 border border-[#2A2A2D] px-1.5 py-0.5 rounded">
+            {project.width}x{project.height} @ {project.fps}fps
           </span>
         </div>
 
-        {/* Navigation buttons */}
-        <div className="flex items-center justify-center gap-2">
-          <button
-            id="btn-player-rewind"
-            onClick={() => {
-              onTimeUpdate(0);
-              syncAudioAndVideo(0, isPlaying);
-            }}
-            className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            title="Reset to 0s"
-          >
-            <RotateCcw size={15} />
-          </button>
-          
-          <button
-            id="btn-player-prev-frame"
-            onClick={() => {
-              const next = Math.max(0, currentTime - 1 / project.fps);
-              onTimeUpdate(next);
-              syncAudioAndVideo(next, isPlaying);
-            }}
-            className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            title="Back 1 frame"
-          >
-            <SkipBack size={15} />
-          </button>
+        {/* Resize Controls */}
+        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+          {/* Zoom Slider */}
+          <div className="flex items-center gap-1.5">
+            <ZoomOut size={12} className="text-slate-500" />
+            <input
+              id="slider-preview-zoom"
+              type="range"
+              min="240"
+              max={Math.max(1200, containerSize.width)}
+              step="10"
+              value={activeWidth}
+              onChange={(e) => {
+                setPreviewMode('custom');
+                setCustomWidth(parseInt(e.target.value, 10));
+              }}
+              className="w-20 sm:w-28 accent-indigo-500 h-1 rounded bg-[#161618] border border-[#2A2A2D] cursor-ew-resize"
+              title="Drag to scale preview dynamically"
+            />
+            <ZoomIn size={12} className="text-slate-500" />
+          </div>
 
-          <button
-            id="btn-player-play-pause"
-            onClick={() => onPlayPause(!isPlaying)}
-            className="w-9 h-9 bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center rounded-full transition-all cursor-pointer shadow-lg shadow-indigo-900/20 shrink-0"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Quick Sizing Selector */}
+            <select
+              id="select-preview-scale"
+              value={previewMode === 'fit' ? 'fit' : customWidth}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'fit') {
+                  setPreviewMode('fit');
+                } else {
+                  setPreviewMode('custom');
+                  setCustomWidth(parseInt(val, 10));
+                }
+              }}
+              className="bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-[10px] text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
+            >
+              <option value="fit">Fit Window ({Math.round((activeWidth / fitWidth) * 100)}%)</option>
+              <option value="320">320px (Compact)</option>
+              <option value="480">480px (Standard)</option>
+              <option value="640">640px (Medium)</option>
+              <option value="800">800px (Large)</option>
+              <option value="1000">1000px (Cinema)</option>
+            </select>
 
-          <button
-            id="btn-player-next-frame"
-            onClick={() => {
-              const next = Math.min(project.duration, currentTime + 1 / project.fps);
-              onTimeUpdate(next);
-              syncAudioAndVideo(next, isPlaying);
-            }}
-            className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            title="Forward 1 frame"
-          >
-            <SkipForward size={15} />
-          </button>
+            {/* Fit-to-Window Toggle */}
+            <button
+              id="btn-preview-fit"
+              onClick={() => setPreviewMode(previewMode === 'fit' ? 'custom' : 'fit')}
+              className={`p-1 rounded border transition-all ${
+                previewMode === 'fit'
+                  ? 'border-indigo-500 bg-indigo-950/40 text-indigo-400'
+                  : 'border-[#2A2A2D] bg-[#161618] text-slate-400 hover:text-slate-200 hover:border-[#35353A]'
+              }`}
+              title="Toggle Fit to Window"
+            >
+              <Maximize2 size={12} />
+            </button>
+          </div>
+        </div>
+      </div>
 
-          <button
-            id="btn-player-mute"
-            onClick={() => {
-              const nextMute = !isMuted;
-              setIsMuted(nextMute);
-              syncAudioAndVideo(currentTime, isPlaying && !nextMute);
-            }}
-            className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            title={isMuted ? 'Unmute procedural audio' : 'Mute procedural audio'}
+      {/* Main Preview Work Area with dynamic overflow panning */}
+      <div className="flex-1 flex items-center justify-center p-4 overflow-auto scrollbar-thin scrollbar-thumb-[#2A2A2D] scrollbar-track-transparent">
+        
+        {/* Resizable Player Wrapper */}
+        <div 
+          className="flex flex-col items-center justify-center relative group"
+          style={{ 
+            width: `${activeWidth}px`, 
+            maxWidth: '100%',
+            transition: isResizingPreview ? 'none' : 'width 0.12s ease-out'
+          }}
+        >
+          {/* Symmetrical Left Resize Drag Handle */}
+          <div
+            id="handle-preview-resize-left"
+            onMouseDown={(e) => handleSymmetricalResizeStart(e, -1)}
+            className={`absolute left-0 top-0 bottom-0 w-1.5 -ml-1 cursor-col-resize z-20 hover:bg-indigo-500/20 active:bg-indigo-500 rounded flex items-center justify-center transition-all ${
+              isResizingPreview ? '!bg-indigo-500 !w-2' : ''
+            }`}
+            title="Drag to resize symmetrically"
           >
-            {isMuted ? <VolumeX size={15} className="text-red-500" /> : <Volume2 size={15} />}
-          </button>
+            <div className="w-[1px] h-8 bg-slate-400/30 rounded-full" />
+          </div>
+
+          {/* Symmetrical Right Resize Drag Handle */}
+          <div
+            id="handle-preview-resize-right"
+            onMouseDown={(e) => handleSymmetricalResizeStart(e, 1)}
+            className={`absolute right-0 top-0 bottom-0 w-1.5 -mr-1 cursor-col-resize z-20 hover:bg-indigo-500/20 active:bg-indigo-500 rounded flex items-center justify-center transition-all ${
+              isResizingPreview ? '!bg-indigo-500 !w-2' : ''
+            }`}
+            title="Drag to resize symmetrically"
+          >
+            <div className="w-[1px] h-8 bg-slate-400/30 rounded-full" />
+          </div>
+
+          {/* Player Canvas Frame Box */}
+          <div 
+            className="relative w-full bg-[#161618] rounded-lg shadow-2xl overflow-hidden border border-[#2A2A2D] shrink-0"
+            style={{ aspectRatio: `${project.width} / ${project.height}` }}
+          >
+            <canvas
+              id="preview-canvas"
+              ref={canvasRef}
+              width={project.width}
+              height={project.height}
+              className="w-full h-full object-contain"
+            />
+
+            {/* Loading Overlay */}
+            {renderProgress !== null && (
+              <div className="absolute inset-0 bg-[#0F0F10]/95 flex flex-col items-center justify-center p-6 text-center animate-fadeIn z-30">
+                <RefreshCw size={36} className="text-indigo-400 animate-spin mb-4" />
+                <span className="text-base font-bold text-white uppercase tracking-wider">Rendering Digital Video</span>
+                <p className="text-xs text-slate-400 mt-1 max-w-[320px]">
+                  Slicing frames and mixing procedural tracks client-side. Hold tight...
+                </p>
+                <div className="w-64 bg-[#232326] h-2 rounded-full overflow-hidden mt-4 border border-[#2A2A2D]">
+                  <div 
+                    className="bg-gradient-to-r from-indigo-600 to-violet-600 h-full transition-all duration-100"
+                    style={{ width: `${renderProgress}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-mono font-bold text-slate-500 mt-2">{renderProgress}% COMPLETE</span>
+              </div>
+            )}
+
+            {/* Selected Clip Indicator Watermark */}
+            {selectedClip && (
+              <div className="absolute top-3 left-3 bg-[#0F0F10]/90 backdrop-blur border border-[#2A2A2D] px-2 py-1 rounded text-[9px] font-mono text-slate-400 flex items-center gap-1.5 pointer-events-none">
+                <Film size={10} className="text-indigo-400" />
+                ACTIVE LAYER: {selectedClip.name.toUpperCase()}
+              </div>
+            )}
+          </div>
+
+          {/* Control Rail Panel */}
+          <div className="w-full mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-[#161618] px-4 py-3 rounded-lg border border-[#2A2A2D] shadow-lg shrink-0">
+            {/* Timestamp */}
+            <div className="flex items-center gap-2 shrink-0 justify-center">
+              <span className="text-xs font-mono font-bold text-indigo-400 bg-[#0F0F10] px-2.5 py-1 rounded border border-[#2A2A2D]">
+                {formatTime(currentTime)}
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">
+                / {formatTime(project.duration)}
+              </span>
+            </div>
+
+            {/* Navigation buttons */}
+            <div className="flex items-center justify-center gap-2">
+              <button
+                id="btn-player-rewind"
+                onClick={() => {
+                  onTimeUpdate(0);
+                  syncAudioAndVideo(0, isPlaying);
+                }}
+                className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                title="Reset to 0s"
+              >
+                <RotateCcw size={15} />
+              </button>
+              
+              <button
+                id="btn-player-prev-frame"
+                onClick={() => {
+                  const next = Math.max(0, currentTime - 1 / project.fps);
+                  onTimeUpdate(next);
+                  syncAudioAndVideo(next, isPlaying);
+                }}
+                className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                title="Back 1 frame"
+              >
+                <SkipBack size={15} />
+              </button>
+
+              <button
+                id="btn-player-play-pause"
+                onClick={() => onPlayPause(!isPlaying)}
+                className="w-9 h-9 bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center rounded-full transition-all cursor-pointer shadow-lg shadow-indigo-900/20 shrink-0"
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
+              </button>
+
+              <button
+                id="btn-player-next-frame"
+                onClick={() => {
+                  const next = Math.min(project.duration, currentTime + 1 / project.fps);
+                  onTimeUpdate(next);
+                  syncAudioAndVideo(next, isPlaying);
+                }}
+                className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                title="Forward 1 frame"
+              >
+                <SkipForward size={15} />
+              </button>
+
+              <button
+                id="btn-player-mute"
+                onClick={() => {
+                  const nextMute = !isMuted;
+                  setIsMuted(nextMute);
+                  syncAudioAndVideo(currentTime, isPlaying && !nextMute);
+                }}
+                className="p-1.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                title={isMuted ? 'Unmute procedural audio' : 'Mute procedural audio'}
+              >
+                {isMuted ? <VolumeX size={15} className="text-red-500" /> : <Volume2 size={15} />}
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
 

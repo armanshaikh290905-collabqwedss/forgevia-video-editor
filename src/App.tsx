@@ -166,10 +166,37 @@ const createInitialProject = (): VideoProject => {
     locked: false
   };
 
+  const overlayTrack: TimelineTrack = {
+    id: 'track_overlay_1',
+    name: 'Overlay Track',
+    type: 'text',
+    clips: [
+      {
+        id: 'clip_overlay_1',
+        name: 'Trending Sticker',
+        type: 'text',
+        start: 5,
+        duration: 4,
+        sourceDuration: 4,
+        sourceOffset: 0,
+        text: '🔥 TRENDING 🔥',
+        fontSize: 18,
+        color: '#ffffff',
+        backgroundColor: '#ef4444',
+        fontFamily: 'JetBrains Mono',
+        alignment: 'center',
+        animation: 'glitch',
+        positionY: 20
+      } as TextClip
+    ],
+    muted: false,
+    locked: false
+  };
+
   return {
     id: 'project_default',
     name: 'Cybernetic Voyage Trailer',
-    tracks: [videoTrack, textTrack, audioTrack],
+    tracks: [videoTrack, overlayTrack, textTrack, audioTrack],
     duration: 30, // 30 seconds
     fps: 30,
     width: 1280,
@@ -177,9 +204,117 @@ const createInitialProject = (): VideoProject => {
   };
 };
 
+export interface WorkspacePreset {
+  id: string;
+  name: string;
+  isCustom?: boolean;
+  leftWidth: number;
+  rightWidth: number;
+  bottomHeight: number;
+  mediaVisible: boolean;
+  propertiesVisible: boolean;
+  timelineVisible: boolean;
+  order: {
+    media: number;
+    preview: number;
+    properties: number;
+  };
+}
+
+const DEFAULT_WORKSPACES: WorkspacePreset[] = [
+  {
+    id: 'editing',
+    name: 'Editing (Standard)',
+    leftWidth: 340,
+    rightWidth: 320,
+    bottomHeight: 280,
+    mediaVisible: true,
+    propertiesVisible: true,
+    timelineVisible: true,
+    order: { media: 1, preview: 2, properties: 3 }
+  },
+  {
+    id: 'color',
+    name: 'Color Tuning',
+    leftWidth: 240,
+    rightWidth: 420,
+    bottomHeight: 200,
+    mediaVisible: true,
+    propertiesVisible: true,
+    timelineVisible: true,
+    order: { media: 3, preview: 2, properties: 1 } // Swapped! Properties on left, Media on right
+  },
+  {
+    id: 'audio',
+    name: 'Audio Mixing',
+    leftWidth: 240,
+    rightWidth: 240,
+    bottomHeight: 440,
+    mediaVisible: true,
+    propertiesVisible: true,
+    timelineVisible: true,
+    order: { media: 1, preview: 2, properties: 3 }
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal Focus',
+    leftWidth: 0,
+    rightWidth: 0,
+    bottomHeight: 70,
+    mediaVisible: false,
+    propertiesVisible: false,
+    timelineVisible: true,
+    order: { media: 1, preview: 2, properties: 3 }
+  },
+  {
+    id: 'media',
+    name: 'Media Intake',
+    leftWidth: 480,
+    rightWidth: 0,
+    bottomHeight: 220,
+    mediaVisible: true,
+    propertiesVisible: false,
+    timelineVisible: true,
+    order: { media: 1, preview: 2, properties: 3 }
+  }
+];
+
 export default function App() {
   const [project, setProject] = useState<VideoProject>(createInitialProject);
   
+  // Workspace Layout State Engines
+  const [workspaces, setWorkspaces] = useState<WorkspacePreset[]>(() => {
+    const saved = localStorage.getItem('vividcut-workspaces');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved workspaces, falling back to default", e);
+      }
+    }
+    return DEFAULT_WORKSPACES;
+  });
+
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>(() => {
+    const saved = localStorage.getItem('vividcut-active-workspace');
+    return saved || 'editing';
+  });
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [isSavingCustom, setIsSavingCustom] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+
+  const [layoutOrder, setLayoutOrder] = useState<{ media: number; preview: number; properties: number }>(() => {
+    const savedWsId = localStorage.getItem('vividcut-active-workspace') || 'editing';
+    const savedWsList = localStorage.getItem('vividcut-workspaces');
+    let loadedList = DEFAULT_WORKSPACES;
+    if (savedWsList) {
+      try { loadedList = JSON.parse(savedWsList); } catch (_) {}
+    }
+    const currentWs = loadedList.find(w => w.id === savedWsId) || loadedList[0];
+    return currentWs.order || { media: 1, preview: 2, properties: 3 };
+  });
+
   // Undo/Redo state stacks
   const [history, setHistory] = useState<VideoProject[]>([]);
   const [historyPointer, setHistoryPointer] = useState<number>(-1);
@@ -193,6 +328,402 @@ export default function App() {
   // VividCut-style layout states
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const [autoSavedTime, setAutoSavedTime] = useState<string>('Auto saved: 12:00:00');
+
+  // Draggable panel states
+  const [leftWidth, setLeftWidth] = useState<number>(() => {
+    const savedWsId = localStorage.getItem('vividcut-active-workspace') || 'editing';
+    const savedWsList = localStorage.getItem('vividcut-workspaces');
+    let loadedList = DEFAULT_WORKSPACES;
+    if (savedWsList) {
+      try { loadedList = JSON.parse(savedWsList); } catch (_) {}
+    }
+    const currentWs = loadedList.find(w => w.id === savedWsId) || loadedList[0];
+    return currentWs.mediaVisible ? currentWs.leftWidth : 0;
+  });
+  
+  const [rightWidth, setRightWidth] = useState<number>(() => {
+    const savedWsId = localStorage.getItem('vividcut-active-workspace') || 'editing';
+    const savedWsList = localStorage.getItem('vividcut-workspaces');
+    let loadedList = DEFAULT_WORKSPACES;
+    if (savedWsList) {
+      try { loadedList = JSON.parse(savedWsList); } catch (_) {}
+    }
+    const currentWs = loadedList.find(w => w.id === savedWsId) || loadedList[0];
+    return currentWs.propertiesVisible ? currentWs.rightWidth : 0;
+  });
+  
+  const [bottomHeight, setBottomHeight] = useState<number>(() => {
+    const savedWsId = localStorage.getItem('vividcut-active-workspace') || 'editing';
+    const savedWsList = localStorage.getItem('vividcut-workspaces');
+    let loadedList = DEFAULT_WORKSPACES;
+    if (savedWsList) {
+      try { loadedList = JSON.parse(savedWsList); } catch (_) {}
+    }
+    const currentWs = loadedList.find(w => w.id === savedWsId) || loadedList[0];
+    return currentWs.timelineVisible ? currentWs.bottomHeight : 70;
+  });
+
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const [isResizingBottom, setIsResizingBottom] = useState(false);
+
+  // Workspace Management Handlers & Helpers
+  const saveWorkspaceDimension = (key: 'leftWidth' | 'rightWidth' | 'bottomHeight', value: number) => {
+    setWorkspaces(prev => {
+      const updated = prev.map(w => {
+        if (w.id === currentWorkspaceId) {
+          const nextWs = {
+            ...w,
+            [key]: value
+          };
+          // Automatically synchronize visibility flags based on thresholds
+          if (key === 'leftWidth') nextWs.mediaVisible = value > 50;
+          if (key === 'rightWidth') nextWs.propertiesVisible = value > 50;
+          if (key === 'bottomHeight') nextWs.timelineVisible = value > 75;
+          return nextWs;
+        }
+        return w;
+      });
+      localStorage.setItem('vividcut-workspaces', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleSelectWorkspace = (workspaceId: string) => {
+    const ws = workspaces.find(w => w.id === workspaceId);
+    if (!ws) return;
+    setCurrentWorkspaceId(workspaceId);
+    localStorage.setItem('vividcut-active-workspace', workspaceId);
+
+    // Apply layout positions & sizes
+    setLayoutOrder(ws.order || { media: 1, preview: 2, properties: 3 });
+    setLeftWidth(ws.mediaVisible ? ws.leftWidth : 0);
+    setRightWidth(ws.propertiesVisible ? ws.rightWidth : 0);
+    setBottomHeight(ws.timelineVisible ? ws.bottomHeight : 70);
+    setWorkspaceOpen(false);
+  };
+
+  const handleSaveWorkspace = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWorkspaceName.trim()) return;
+
+    const newId = 'custom_' + Date.now();
+    const newWs: WorkspacePreset = {
+      id: newId,
+      name: newWorkspaceName.trim(),
+      isCustom: true,
+      leftWidth: leftWidth > 0 ? leftWidth : 340,
+      rightWidth: rightWidth > 0 ? rightWidth : 320,
+      bottomHeight: bottomHeight > 70 ? bottomHeight : 280,
+      mediaVisible: leftWidth > 0,
+      propertiesVisible: rightWidth > 0,
+      timelineVisible: bottomHeight > 70,
+      order: { ...layoutOrder }
+    };
+
+    const updatedWorkspaces = [...workspaces, newWs];
+    setWorkspaces(updatedWorkspaces);
+    localStorage.setItem('vividcut-workspaces', JSON.stringify(updatedWorkspaces));
+    
+    setCurrentWorkspaceId(newId);
+    localStorage.setItem('vividcut-active-workspace', newId);
+    
+    setNewWorkspaceName('');
+    setIsSavingCustom(false);
+    setWorkspaceOpen(false);
+  };
+
+  const handleDeleteCustomWorkspace = (e: React.MouseEvent, workspaceId: string) => {
+    e.stopPropagation();
+    const updated = workspaces.filter(w => w.id !== workspaceId);
+    setWorkspaces(updated);
+    localStorage.setItem('vividcut-workspaces', JSON.stringify(updated));
+
+    if (currentWorkspaceId === workspaceId) {
+      handleSelectWorkspace('editing');
+    }
+  };
+
+  const handleResetActiveWorkspace = () => {
+    const original = DEFAULT_WORKSPACES.find(w => w.id === currentWorkspaceId);
+    if (original) {
+      setWorkspaces(prev => {
+        const updated = prev.map(w => {
+          if (w.id === currentWorkspaceId) {
+            return { ...original };
+          }
+          return w;
+        });
+        localStorage.setItem('vividcut-workspaces', JSON.stringify(updated));
+        return updated;
+      });
+      setLayoutOrder(original.order);
+      setLeftWidth(original.mediaVisible ? original.leftWidth : 0);
+      setRightWidth(original.propertiesVisible ? original.rightWidth : 0);
+      setBottomHeight(original.timelineVisible ? original.bottomHeight : 70);
+    } else {
+      setWorkspaces(prev => {
+        const updated = prev.map(w => {
+          if (w.id === currentWorkspaceId) {
+            return {
+              ...w,
+              leftWidth: 340,
+              rightWidth: 320,
+              bottomHeight: 280,
+              mediaVisible: true,
+              propertiesVisible: true,
+              timelineVisible: true,
+              order: { media: 1, preview: 2, properties: 3 }
+            };
+          }
+          return w;
+        });
+        localStorage.setItem('vividcut-workspaces', JSON.stringify(updated));
+        return updated;
+      });
+      setLayoutOrder({ media: 1, preview: 2, properties: 3 });
+      setLeftWidth(340);
+      setRightWidth(320);
+      setBottomHeight(280);
+    }
+    setWorkspaceOpen(false);
+  };
+
+  const handleResetAllToDefault = () => {
+    const conf = window.confirm('Are you sure you want to delete all custom workspaces and reset layout parameters back to their original defaults?');
+    if (conf) {
+      localStorage.removeItem('vividcut-workspaces');
+      localStorage.removeItem('vividcut-active-workspace');
+      setWorkspaces(DEFAULT_WORKSPACES);
+      setCurrentWorkspaceId('editing');
+      setLayoutOrder({ media: 1, preview: 2, properties: 3 });
+      setLeftWidth(340);
+      setRightWidth(320);
+      setBottomHeight(280);
+      setWorkspaceOpen(false);
+    }
+  };
+
+  const handleSwapPanels = () => {
+    const nextOrder = {
+      ...layoutOrder,
+      media: layoutOrder.media === 1 ? 3 : 1,
+      properties: layoutOrder.properties === 1 ? 3 : 1,
+    };
+    
+    setLayoutOrder(nextOrder);
+    
+    setWorkspaces(prev => {
+      const updated = prev.map(w => {
+        if (w.id === currentWorkspaceId) {
+          return { ...w, order: nextOrder };
+        }
+        return w;
+      });
+      localStorage.setItem('vividcut-workspaces', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const togglePanelVisibility = (panel: 'media' | 'properties' | 'timeline') => {
+    setWorkspaces(prev => {
+      const updated = prev.map(w => {
+        if (w.id === currentWorkspaceId) {
+          const nextWs = { ...w };
+          if (panel === 'media') {
+            nextWs.mediaVisible = !nextWs.mediaVisible;
+            setLeftWidth(nextWs.mediaVisible ? (nextWs.leftWidth || 340) : 0);
+          } else if (panel === 'properties') {
+            nextWs.propertiesVisible = !nextWs.propertiesVisible;
+            setRightWidth(nextWs.propertiesVisible ? (nextWs.rightWidth || 320) : 0);
+          } else if (panel === 'timeline') {
+            nextWs.timelineVisible = !nextWs.timelineVisible;
+            setBottomHeight(nextWs.timelineVisible ? (nextWs.bottomHeight || 280) : 70);
+          }
+          return nextWs;
+        }
+        return w;
+      });
+      localStorage.setItem('vividcut-workspaces', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Layout orders generator for flexible columns rearrangement
+  const getLayoutOrders = (orderObj: { media: number; preview: number; properties: number }) => {
+    let mediaOrder = 1;
+    let leftHandleOrder = 2;
+    let previewOrder = 3;
+    let rightHandleOrder = 4;
+    let propertiesOrder = 5;
+
+    if (orderObj.media === 1 && orderObj.properties === 3) {
+      mediaOrder = 1;
+      leftHandleOrder = 2;
+      previewOrder = 3;
+      rightHandleOrder = 4;
+      propertiesOrder = 5;
+    } else if (orderObj.properties === 1 && orderObj.media === 3) {
+      propertiesOrder = 1;
+      rightHandleOrder = 2;
+      previewOrder = 3;
+      leftHandleOrder = 4;
+      mediaOrder = 5;
+    }
+
+    return {
+      mediaOrder,
+      leftHandleOrder,
+      previewOrder,
+      rightHandleOrder,
+      propertiesOrder,
+    };
+  };
+
+  const layoutOrders = getLayoutOrders(layoutOrder);
+
+  // Resize Left Panel (Media Library)
+  const handleLeftResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingLeft(true);
+    const startX = e.clientX;
+    const startWidth = leftWidth;
+    let finalWidth = startWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      let newWidth = startWidth + deltaX;
+      const minWidth = 220;
+      const containerWidth = window.innerWidth;
+      const maxWidth = containerWidth - rightWidth - 320; // 320px min for preview
+      if (newWidth < minWidth) newWidth = minWidth;
+      if (newWidth > maxWidth) newWidth = maxWidth;
+      setLeftWidth(newWidth);
+      finalWidth = newWidth;
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      saveWorkspaceDimension('leftWidth', finalWidth);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Resize Right Panel (Properties Inspector)
+  const handleRightResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+    const startX = e.clientX;
+    const startWidth = rightWidth;
+    let finalWidth = startWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      let newWidth = startWidth - deltaX; // dragging left increases width
+      const minWidth = 220;
+      const containerWidth = window.innerWidth;
+      const maxWidth = containerWidth - leftWidth - 320; // 320px min for preview
+      if (newWidth < minWidth) newWidth = minWidth;
+      if (newWidth > maxWidth) newWidth = maxWidth;
+      setRightWidth(newWidth);
+      finalWidth = newWidth;
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingRight(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      saveWorkspaceDimension('rightWidth', finalWidth);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Resize Bottom Panel (Timeline)
+  const handleBottomResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingBottom(true);
+    const startY = e.clientY;
+    const startHeight = bottomHeight;
+    let finalHeight = startHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      let newHeight = startHeight - deltaY; // dragging up increases height
+      const minHeight = 160;
+      const maxHeight = window.innerHeight - 200; // 200px min for upper part
+      if (newHeight < minHeight) newHeight = minHeight;
+      if (newHeight > maxHeight) newHeight = maxHeight;
+      setBottomHeight(newHeight);
+      finalHeight = newHeight;
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingBottom(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      saveWorkspaceDimension('bottomHeight', finalHeight);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Persist values on changes
+  useEffect(() => {
+    localStorage.setItem('vividcut-panel-left-width', String(leftWidth));
+  }, [leftWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('vividcut-panel-right-width', String(rightWidth));
+  }, [rightWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('vividcut-panel-bottom-height', String(bottomHeight));
+  }, [bottomHeight]);
+
+  // Double-click to reset dividers
+  const handleLeftResizeReset = () => {
+    setLeftWidth(350);
+  };
+  const handleRightResizeReset = () => {
+    setRightWidth(320);
+  };
+  const handleBottomResizeReset = () => {
+    setBottomHeight(300);
+  };
+
+  // Window resize responsive clamping
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const containerWidth = window.innerWidth;
+      const minWidth = 220;
+      if (containerWidth >= 768) {
+        let updatedLeft = leftWidth;
+        let updatedRight = rightWidth;
+
+        if (updatedLeft < minWidth) updatedLeft = minWidth;
+        if (updatedRight < minWidth) updatedRight = minWidth;
+
+        const totalSides = updatedLeft + updatedRight;
+        if (totalSides > containerWidth - 320) {
+          const ratio = (containerWidth - 320) / totalSides;
+          updatedLeft = Math.max(minWidth, Math.floor(updatedLeft * ratio));
+          updatedRight = Math.max(minWidth, Math.floor(updatedRight * ratio));
+        }
+
+        if (updatedLeft !== leftWidth) setLeftWidth(updatedLeft);
+        if (updatedRight !== rightWidth) setRightWidth(updatedRight);
+      }
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [leftWidth, rightWidth]);
 
   // Sync auto-saved clock whenever project updates
   useEffect(() => {
@@ -833,6 +1364,14 @@ export default function App() {
         locked: false
       },
       {
+        id: 'track_overlay_1',
+        name: 'Overlay Track',
+        type: 'text',
+        clips: [],
+        muted: false,
+        locked: false
+      },
+      {
         id: 'track_text_1',
         name: 'Overlay Text',
         type: 'text',
@@ -1301,6 +1840,181 @@ export default function App() {
             )}
           </div>
 
+          {/* Workspace Switcher Dropdown */}
+          <div className="relative">
+            <button
+              id="btn-workspace-selector"
+              onClick={() => {
+                setWorkspaceOpen(!workspaceOpen);
+                setMenuOpen(false);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#232326] hover:bg-[#2A2A2D] border border-[#2d2d34] text-xs font-semibold rounded text-indigo-300 hover:text-white transition-colors cursor-pointer"
+              title="Switch Layout Preset"
+            >
+              <Sliders size={12} className="text-indigo-400" />
+              <span>Workspace: {workspaces.find(w => w.id === currentWorkspaceId)?.name || 'Custom'}</span>
+              <ChevronDown size={11} className={`transition-transform text-slate-400 ${workspaceOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {workspaceOpen && (
+              <div className="absolute left-0 mt-1.5 w-72 bg-[#1c1c22] border border-[#2d2d34] rounded-lg shadow-2xl py-2 z-40 animate-fadeIn text-xs">
+                {/* Header Section */}
+                <div className="px-3 pb-2 mb-1 border-b border-[#2d2d34] flex items-center justify-between">
+                  <span className="font-extrabold text-[10px] tracking-wider text-slate-400 uppercase">Layout Presets</span>
+                  <button 
+                    onClick={handleResetAllToDefault}
+                    className="text-[9px] text-indigo-400 hover:text-indigo-300 font-bold transition-colors"
+                    title="Delete custom templates and reset defaults"
+                  >
+                    Reset All Defaults
+                  </button>
+                </div>
+
+                {/* List of Presets */}
+                <div className="max-h-56 overflow-y-auto space-y-0.5 px-1">
+                  {workspaces.map(ws => {
+                    const isActive = ws.id === currentWorkspaceId;
+                    return (
+                      <div 
+                        key={ws.id}
+                        onClick={() => handleSelectWorkspace(ws.id)}
+                        className={`group w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-left cursor-pointer transition-all ${
+                          isActive 
+                            ? 'bg-indigo-950/40 border border-indigo-850/50 text-indigo-300' 
+                            : 'hover:bg-[#25252b] text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{ws.name}</span>
+                          <span className="text-[9px] text-slate-500">
+                            {ws.id === 'editing' && 'Standard balanced canvas'}
+                            {ws.id === 'color' && 'Swapped: Inspector left, Media right'}
+                            {ws.id === 'audio' && 'Enlarged multitrack workflow'}
+                            {ws.id === 'minimal' && 'Cinematic monitor focus'}
+                            {ws.id === 'media' && 'Enlarged asset library'}
+                            {ws.isCustom && 'User custom layout'}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {isActive && <CheckCircle2 size={12} className="text-indigo-400" />}
+                          {ws.isCustom && (
+                            <button
+                              onClick={(e) => handleDeleteCustomWorkspace(e, ws.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 rounded hover:bg-slate-800 transition-all"
+                              title="Delete custom workspace"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Rearrange Control Section */}
+                <div className="mt-2 pt-2 px-3 border-t border-[#2d2d34] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[9px] text-slate-400 uppercase">Interactive Rearrange</span>
+                    <button 
+                      onClick={handleSwapPanels}
+                      className="px-2 py-0.5 bg-indigo-900/30 hover:bg-indigo-900/60 border border-indigo-700/30 hover:border-indigo-500/50 text-indigo-300 font-bold rounded text-[10px] transition-all flex items-center gap-1"
+                    >
+                      <RefreshCw size={10} />
+                      Swap Columns
+                    </button>
+                  </div>
+
+                  {/* Panel visibility overrides */}
+                  <div className="grid grid-cols-3 gap-1 bg-[#121215] p-1.5 rounded border border-[#2d2d34]/60">
+                    <button
+                      onClick={() => togglePanelVisibility('media')}
+                      className={`py-1 text-[9px] font-bold rounded transition-colors ${
+                        leftWidth > 0 
+                          ? 'bg-[#1e1e24] border border-[#3e3e48] text-indigo-300' 
+                          : 'bg-transparent text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      Media
+                    </button>
+                    <button
+                      onClick={() => togglePanelVisibility('properties')}
+                      className={`py-1 text-[9px] font-bold rounded transition-colors ${
+                        rightWidth > 0 
+                          ? 'bg-[#1e1e24] border border-[#3e3e48] text-indigo-300' 
+                          : 'bg-transparent text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      Inspector
+                    </button>
+                    <button
+                      onClick={() => togglePanelVisibility('timeline')}
+                      className={`py-1 text-[9px] font-bold rounded transition-colors ${
+                        bottomHeight > 75 
+                          ? 'bg-[#1e1e24] border border-[#3e3e48] text-indigo-300' 
+                          : 'bg-transparent text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      Timeline
+                    </button>
+                  </div>
+                </div>
+
+                {/* Save Current Workspace form */}
+                <div className="mt-2 pt-2 px-3 border-t border-[#2d2d34] space-y-1.5">
+                  {!isSavingCustom ? (
+                    <div className="flex items-center justify-between gap-1.5">
+                      <button 
+                        onClick={handleResetActiveWorkspace}
+                        className="flex-1 text-center py-1 bg-transparent hover:bg-slate-800 text-[10px] font-semibold rounded text-slate-400 hover:text-white transition-colors"
+                      >
+                        Reset Layout Settings
+                      </button>
+                      <button 
+                        onClick={() => setIsSavingCustom(true)}
+                        className="flex-1 text-center py-1 bg-[#1c1c24] hover:bg-indigo-900/40 border border-indigo-900/40 hover:border-indigo-600/50 text-[10px] font-semibold rounded text-indigo-300 hover:text-indigo-200 transition-colors"
+                      >
+                        + Save Custom
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSaveWorkspace} className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                      <input 
+                        type="text"
+                        placeholder="My Layout Name"
+                        value={newWorkspaceName}
+                        onChange={(e) => setNewWorkspaceName(e.target.value)}
+                        className="w-full bg-[#121215] border border-[#2d2d34] rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-indigo-500 font-semibold text-xs"
+                        maxLength={24}
+                        autoFocus
+                      />
+                      <div className="flex gap-1">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setIsSavingCustom(false);
+                            setNewWorkspaceName('');
+                          }}
+                          className="flex-1 py-1 text-[9px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          type="submit"
+                          disabled={!newWorkspaceName.trim()}
+                          className="flex-1 py-1 text-[9px] font-bold bg-[#00C4D0] hover:bg-[#00b0ba] text-black disabled:opacity-50 rounded"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <span className="text-[10px] text-slate-400 font-medium hidden md:inline-block">
             {autoSavedTime}
           </span>
@@ -1342,15 +2056,39 @@ export default function App() {
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
         {/* Column 1: Asset Shelf */}
-        <MediaLibrary
-          assets={assets}
-          onAddAsset={handleAddAsset}
-          onDeleteAsset={handleDeleteAsset}
-          onImportScriptToTimeline={handleImportScriptToTimeline}
-          selectedClip={selectedClip}
-          onUpdateClip={handleUpdateClip}
-          onLoadTemplate={handleLoadTemplate}
-        />
+        {leftWidth > 0 && (
+          <MediaLibrary
+            assets={assets}
+            onAddAsset={handleAddAsset}
+            onDeleteAsset={handleDeleteAsset}
+            onImportScriptToTimeline={handleImportScriptToTimeline}
+            selectedClip={selectedClip}
+            onUpdateClip={handleUpdateClip}
+            onLoadTemplate={handleLoadTemplate}
+            width={leftWidth}
+            isResizing={isResizingLeft}
+            style={{ order: layoutOrders.mediaOrder }}
+          />
+        )}
+
+        {/* Horizontal Divider 1 (Left panel resize handle) */}
+        {leftWidth > 0 && (
+          <div
+            id="handle-left-resize"
+            onMouseDown={handleLeftResizeStart}
+            onDoubleClick={handleLeftResizeReset}
+            className={`hidden md:flex w-1.5 hover:w-2 bg-[#202024] hover:bg-[#4F46E5]/90 border-r border-l border-[#2d2d34]/60 hover:border-[#4F46E5] cursor-col-resize select-none shrink-0 z-30 transition-all duration-150 items-center justify-center relative ${isResizingLeft ? '!w-2 !bg-[#4F46E5] !border-[#4F46E5]' : ''}`}
+            title="Drag to resize Media Library, Double-click to reset"
+            style={{ order: layoutOrders.leftHandleOrder }}
+          >
+            {/* Subtle dots representing grab handles */}
+            <div className="flex flex-col gap-1 items-center justify-center pointer-events-none opacity-40">
+              <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+              <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+              <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+            </div>
+          </div>
+        )}
 
         {/* Column 2: Large Video Preview Monitor */}
         <PreviewPlayer
@@ -1360,18 +2098,59 @@ export default function App() {
           isPlaying={isPlaying}
           onPlayPause={setIsPlaying}
           selectedClip={selectedClip}
+          style={{ order: layoutOrders.previewOrder }}
         />
 
+        {/* Horizontal Divider 2 (Right panel resize handle) */}
+        {rightWidth > 0 && (
+          <div
+            id="handle-right-resize"
+            onMouseDown={handleRightResizeStart}
+            onDoubleClick={handleRightResizeReset}
+            className={`hidden md:flex w-1.5 hover:w-2 bg-[#202024] hover:bg-[#4F46E5]/90 border-r border-l border-[#2d2d34]/60 hover:border-[#4F46E5] cursor-col-resize select-none shrink-0 z-30 transition-all duration-150 items-center justify-center relative ${isResizingRight ? '!w-2 !bg-[#4F46E5] !border-[#4F46E5]' : ''}`}
+            title="Drag to resize Inspector Panel, Double-click to reset"
+            style={{ order: layoutOrders.rightHandleOrder }}
+          >
+            {/* Subtle dots representing grab handles */}
+            <div className="flex flex-col gap-1 items-center justify-center pointer-events-none opacity-40">
+              <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+              <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+              <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+            </div>
+          </div>
+        )}
+
         {/* Column 3: Custom Clip Properties Inspector */}
-        <PropertiesPanel
-          selectedClip={selectedClip}
-          onUpdateClip={handleUpdateClip}
-          onDeleteClip={handleDeleteClip}
-          project={project}
-          onUpdateProject={updateProjectState}
-          currentTime={currentTime}
-          onSeek={setCurrentTime}
-        />
+        {rightWidth > 0 && (
+          <PropertiesPanel
+            selectedClip={selectedClip}
+            onUpdateClip={handleUpdateClip}
+            onDeleteClip={handleDeleteClip}
+            project={project}
+            onUpdateProject={updateProjectState}
+            currentTime={currentTime}
+            onSeek={setCurrentTime}
+            width={rightWidth}
+            isResizing={isResizingRight}
+            style={{ order: layoutOrders.propertiesOrder }}
+          />
+        )}
+      </div>
+
+      {/* Vertical Divider 3 (Bottom panel/Timeline resize handle) */}
+      <div
+        id="handle-bottom-resize"
+        onMouseDown={handleBottomResizeStart}
+        onDoubleClick={handleBottomResizeReset}
+        className={`h-1.5 hover:h-2 bg-[#202024] hover:bg-[#4F46E5]/90 border-t border-b border-[#2d2d34]/60 hover:border-[#4F46E5] cursor-row-resize select-none shrink-0 z-30 transition-all duration-150 flex items-center justify-center relative ${isResizingBottom ? '!h-2 !bg-[#4F46E5] !border-[#4F46E5]' : ''}`}
+        title="Drag to resize Timeline, Double-click to reset"
+      >
+        {/* Subtle horizontal dots representing grab handles */}
+        <div className="flex gap-1 items-center justify-center pointer-events-none opacity-40">
+          <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+          <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+          <div className="w-[3px] h-[3px] bg-slate-400 rounded-full" />
+        </div>
       </div>
 
       {/* Bottom Row: Interactive Multitrack Grid Timeline */}
@@ -1399,6 +2178,8 @@ export default function App() {
         canRedo={historyPointer < history.length - 1}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        height={bottomHeight}
+        isResizing={isResizingBottom}
       />
     </div>
   );

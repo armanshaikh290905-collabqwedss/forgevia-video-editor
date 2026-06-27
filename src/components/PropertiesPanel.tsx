@@ -21,6 +21,9 @@ interface PropertiesPanelProps {
   onUpdateProject: (proj: VideoProject) => void;
   currentTime?: number;
   onSeek?: (time: number) => void;
+  width?: number;
+  isResizing?: boolean;
+  style?: React.CSSProperties;
 }
 
 export default function PropertiesPanel({
@@ -30,7 +33,10 @@ export default function PropertiesPanel({
   project,
   onUpdateProject,
   currentTime = 0,
-  onSeek
+  onSeek,
+  width,
+  isResizing,
+  style
 }: PropertiesPanelProps) {
 
   // Update properties handler
@@ -201,37 +207,60 @@ export default function PropertiesPanel({
 
   const nextClip = getNextClip();
 
+  const isCompact = width !== undefined && width < 280;
+  const isLarge = width !== undefined && width >= 380;
+
   return (
-    <div id="inspector-properties-panel" className="bg-[#161618] border-t md:border-t-0 md:border-l border-[#2A2A2D] w-full md:w-80 flex flex-col h-[400px] md:h-full overflow-y-auto">
+    <div 
+      id="inspector-properties-panel" 
+      className="bg-[#161618] border-t md:border-t-0 md:border-l border-[#2A2A2D] w-full md:w-80 flex flex-col h-[400px] md:h-full overflow-y-auto"
+      style={{
+        ...(typeof window !== 'undefined' && window.innerWidth >= 768 && width !== undefined 
+          ? { 
+              width: `${width}px`,
+              transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.16, 1, 0.3, 1)'
+            } 
+          : {}),
+        ...style
+      }}
+    >
       {/* Panel Header */}
-      <div className="px-4 py-3 border-b border-[#2A2A2D] bg-[#0F0F10] shrink-0 flex items-center gap-2">
+      <div className={`px-4 py-3 border-b border-[#2A2A2D] bg-[#0F0F10] shrink-0 flex items-center gap-2 ${isCompact ? 'justify-center' : ''}`}>
         <Settings size={14} className="text-indigo-400" />
-        <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Clip Inspector</span>
+        {!isCompact && (
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+            {isLarge ? 'Professional Clip Properties Inspector' : 'Clip Inspector'}
+          </span>
+        )}
       </div>
 
       {selectedClip ? (
-        <div className="p-4 flex flex-col gap-5">
+        <div className={isCompact ? 'p-2.5 flex flex-col gap-3.5' : isLarge ? 'p-6 flex flex-col gap-6' : 'p-4 flex flex-col gap-5'}>
           {/* General Properties */}
-          <div className="flex flex-col gap-3">
+          <div className={`flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3'}`}>
             <div>
-              <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider">Clip Name</label>
+              <label className={`${isCompact ? 'text-[8.5px]' : isLarge ? 'text-xs' : 'text-[10px]'} text-slate-400 font-bold block mb-1 uppercase tracking-wider`}>
+                {isLarge ? 'Selected Clip Identification Name' : 'Clip Name'}
+              </label>
               <input
                 id="input-inspector-clip-name"
                 type="text"
                 value={selectedClip.name}
                 onChange={(e) => handlePropChange('name', e.target.value)}
-                className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+                className={`w-full bg-[#0F0F10] border border-[#2A2A2D] rounded ${isCompact ? 'px-2 py-1 text-[11px]' : isLarge ? 'px-3 py-2 text-sm' : 'px-2.5 py-1.5 text-xs'} text-slate-200 focus:outline-none focus:border-indigo-500 font-medium`}
               />
             </div>
 
             {/* Timing & Duration tuning */}
-            <div className="bg-[#121214] p-3 rounded-lg border border-[#2A2A2D] grid grid-cols-2 gap-2">
-              <div className="col-span-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1 mb-1">
+            <div className={`bg-[#121214] ${isCompact ? 'p-2.5' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D] grid ${isLarge ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+              <div className="col-span-full text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1 mb-1">
                 <Clock size={11} className="text-slate-400" />
-                Timing Precision Tuning
+                {isLarge ? 'Timeline Synchronization & Precision Trim' : 'Timing Precision Tuning'}
               </div>
               <div>
-                <label className="text-[9px] text-slate-400 block mb-0.5">Start Time (s)</label>
+                <label className="text-[9px] text-slate-400 block mb-0.5">
+                  {isLarge ? 'Timeline Start (s)' : isCompact ? 'Start (s)' : 'Start Time (s)'}
+                </label>
                 <input
                   id="input-inspector-clip-start"
                   type="number"
@@ -244,7 +273,9 @@ export default function PropertiesPanel({
               </div>
 
               <div>
-                <label className="text-[9px] text-slate-400 block mb-0.5">Duration (s)</label>
+                <label className="text-[9px] text-slate-400 block mb-0.5">
+                  {isLarge ? 'Play Duration (s)' : isCompact ? 'Dur (s)' : 'Duration (s)'}
+                </label>
                 <input
                   id="input-inspector-clip-duration"
                   type="number"
@@ -255,6 +286,43 @@ export default function PropertiesPanel({
                   className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
                 />
               </div>
+
+              {isLarge && (
+                <div className="animate-fadeIn">
+                  <label className="text-[9px] text-slate-400 block mb-0.5">Timeline End (s)</label>
+                  <input
+                    id="input-inspector-clip-end"
+                    type="number"
+                    step="0.1"
+                    value={Number((selectedClip.start + selectedClip.duration).toFixed(1))}
+                    onChange={(e) => {
+                      const newEnd = parseFloat(e.target.value) || 0;
+                      const newDur = Math.max(0.1, newEnd - selectedClip.start);
+                      handlePropChange('duration', newDur);
+                    }}
+                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              {isLarge && (
+                <div className="col-span-full mt-2 pt-2 border-t border-[#2A2A2D]/40">
+                  <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
+                    <span>Source Media Trim Offset</span>
+                    <span className="font-mono text-[9px]">{(selectedClip.sourceOffset ?? 0).toFixed(1)}s / {(selectedClip.sourceDuration ?? 30).toFixed(1)}s total</span>
+                  </div>
+                  <input
+                    id="slider-inspector-source-offset"
+                    type="range"
+                    min="0"
+                    max={Math.max(10, selectedClip.sourceDuration ?? 30)}
+                    step="0.1"
+                    value={selectedClip.sourceOffset ?? 0}
+                    onChange={(e) => handlePropChange('sourceOffset', parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500 h-2 rounded bg-slate-950 border border-slate-800"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -262,16 +330,18 @@ export default function PropertiesPanel({
 
           {/* Type-Specific Properties: VIDEO */}
           {selectedClip.type === 'video' && (
-            <div className="flex flex-col gap-4 animate-fadeIn">
+            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
                 <Film size={13} className="text-indigo-400" />
-                Video Controls
+                {isLarge ? 'Professional Video Track Layer Controls' : 'Video Controls'}
               </div>
 
               {/* Volume */}
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Volume</label>
+                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    {isLarge ? 'Master Track Layer Audio Volume' : isCompact ? 'Volume' : 'Volume Level'}
+                  </label>
                   <span className="text-[10px] font-mono font-bold text-slate-400">{Math.round((selectedClip as VideoClip).volume * 100)}%</span>
                 </div>
                 <input
@@ -282,35 +352,39 @@ export default function PropertiesPanel({
                   step="0.05"
                   value={(selectedClip as VideoClip).volume}
                   onChange={(e) => handlePropChange('volume', parseFloat(e.target.value))}
-                  className="w-full accent-indigo-500 h-1.5 rounded"
+                  className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 cursor-pointer rounded bg-slate-950 border border-slate-800' : 'h-1.5 rounded'}`}
                 />
               </div>
 
               {/* Speed Multiplier */}
               <div>
-                <label className="text-[10px] text-slate-400 font-bold block mb-1.5 uppercase tracking-wider">Playback Speed</label>
+                <label className="text-[10px] text-slate-400 font-bold block mb-1.5 uppercase tracking-wider">
+                  {isLarge ? 'Relative Playback Speed Multiplier' : isCompact ? 'Speed' : 'Playback Speed'}
+                </label>
                 <select
                   id="select-inspector-video-speed"
                   value={(selectedClip as VideoClip).speed}
                   onChange={(e) => handlePropChange('speed', parseFloat(e.target.value))}
-                  className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
                 >
-                  <option value="0.5">0.5x (Slow Motion)</option>
-                  <option value="1.0">1.0x (Normal)</option>
-                  <option value="1.5">1.5x (Fast Forward)</option>
-                  <option value="2.0">2.0x (Double Speed)</option>
+                  <option value="0.5">0.5x {isLarge ? '(Slowing Cinema Motion)' : '(Slow)'}</option>
+                  <option value="1.0">1.0x (Normal Playback Speed)</option>
+                  <option value="1.5">1.5x {isLarge ? '(Accelerated Playback)' : '(Fast)'}</option>
+                  <option value="2.0">2.0x {isLarge ? '(Double Speed Fast Forward)' : '(Double)'}</option>
                 </select>
               </div>
 
               {/* Color Grading & FX */}
-              <div className="flex flex-col gap-3 bg-[#121214] p-3 rounded-lg border border-[#2A2A2D]">
+              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 mb-1">
                   <Sliders size={11} className="text-indigo-400" />
-                  Color Grading &amp; FX
+                  {isLarge ? 'Advanced Color Grading & Cinematic FX' : 'Color Grading & FX'}
                 </span>
 
                 <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Creative Visual FX</label>
+                  <label className="text-[10px] text-slate-400 block mb-1">
+                    {isLarge ? 'Selected Cinematic Grade Filter Style' : 'Creative Visual FX'}
+                  </label>
                   <select
                     id="select-inspector-video-filter"
                     value={(selectedClip as VideoClip).filter}
@@ -331,7 +405,7 @@ export default function PropertiesPanel({
 
                 <div>
                   <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>Brightness</span>
+                    <span>{isLarge ? 'Layer Lighting Exposure (Brightness)' : isCompact ? 'Bright' : 'Brightness'}</span>
                     <span className="font-mono">{(selectedClip as VideoClip).brightness}%</span>
                   </div>
                   <input
@@ -341,13 +415,13 @@ export default function PropertiesPanel({
                     max="150"
                     value={(selectedClip as VideoClip).brightness}
                     onChange={(e) => handlePropChange('brightness', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
                   />
                 </div>
 
                 <div>
                   <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>Contrast</span>
+                    <span>{isLarge ? 'Dynamic Range Contrast Intensity' : isCompact ? 'Contrast' : 'Contrast'}</span>
                     <span className="font-mono">{(selectedClip as VideoClip).contrast}%</span>
                   </div>
                   <input
@@ -357,13 +431,13 @@ export default function PropertiesPanel({
                     max="150"
                     value={(selectedClip as VideoClip).contrast ?? 100}
                     onChange={(e) => handlePropChange('contrast', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
                   />
                 </div>
 
                 <div>
                   <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>Saturation</span>
+                    <span>{isLarge ? 'Color Saturation and Vibrancy Level' : isCompact ? 'Satur' : 'Saturation'}</span>
                     <span className="font-mono">{(selectedClip as VideoClip).saturation ?? 100}%</span>
                   </div>
                   <input
@@ -373,7 +447,7 @@ export default function PropertiesPanel({
                     max="200"
                     value={(selectedClip as VideoClip).saturation ?? 100}
                     onChange={(e) => handlePropChange('saturation', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
                   />
                 </div>
               </div>
@@ -382,14 +456,16 @@ export default function PropertiesPanel({
 
           {/* Type-Specific Properties: IMAGE */}
           {selectedClip.type === 'image' && (
-            <div className="flex flex-col gap-4 animate-fadeIn">
+            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
                 <Sliders size={13} className="text-indigo-400" />
-                Image Settings
+                {isLarge ? 'Professional Image Backdrop Settings' : 'Image Settings'}
               </div>
 
               <div>
-                <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Visual FX Filter</label>
+                <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">
+                  {isLarge ? 'Selected Aesthetic Image Grading Filter' : 'Visual FX Filter'}
+                </label>
                 <select
                   id="select-inspector-image-filter"
                   value={(selectedClip as ImageClip).filter}
@@ -407,10 +483,10 @@ export default function PropertiesPanel({
                 </select>
               </div>
 
-              <div className="bg-[#121214] p-3 rounded-lg border border-[#2A2A2D] flex flex-col gap-3">
+              <div className={`bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D] flex flex-col gap-3`}>
                 <div>
                   <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>Brightness</span>
+                    <span>{isLarge ? 'Image Ambient Highlights (Brightness)' : isCompact ? 'Bright' : 'Brightness'}</span>
                     <span className="font-mono">{(selectedClip as ImageClip).brightness}%</span>
                   </div>
                   <input
@@ -420,13 +496,13 @@ export default function PropertiesPanel({
                     max="150"
                     value={(selectedClip as ImageClip).brightness}
                     onChange={(e) => handlePropChange('brightness', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
                   />
                 </div>
 
                 <div>
                   <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>Contrast</span>
+                    <span>{isLarge ? 'Dynamic Backlight Contrast Intensity' : isCompact ? 'Contrast' : 'Contrast'}</span>
                     <span className="font-mono">{(selectedClip as ImageClip).contrast}%</span>
                   </div>
                   <input
@@ -436,13 +512,13 @@ export default function PropertiesPanel({
                     max="150"
                     value={(selectedClip as ImageClip).contrast}
                     onChange={(e) => handlePropChange('contrast', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
                   />
                 </div>
 
                 <div>
                   <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>Saturation</span>
+                    <span>{isLarge ? 'Color Saturation and Vibrancy Gain' : isCompact ? 'Satur' : 'Saturation'}</span>
                     <span className="font-mono">{(selectedClip as ImageClip).saturation}%</span>
                   </div>
                   <input
@@ -452,7 +528,7 @@ export default function PropertiesPanel({
                     max="200"
                     value={(selectedClip as ImageClip).saturation}
                     onChange={(e) => handlePropChange('saturation', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
                   />
                 </div>
               </div>
@@ -461,15 +537,17 @@ export default function PropertiesPanel({
 
           {/* Type-Specific Properties: AUDIO */}
           {selectedClip.type === 'audio' && (
-            <div className="flex flex-col gap-4 animate-fadeIn">
+            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
                 <Volume2 size={13} className="text-emerald-500" />
-                Audio Controls
+                {isLarge ? 'Professional Audio Layer Output Controls' : 'Audio Controls'}
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Volume Level</label>
+                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    {isLarge ? 'Master Output Volume Gain' : isCompact ? 'Volume' : 'Volume Level'}
+                  </label>
                   <span className="text-[10px] font-mono font-bold text-slate-400">{Math.round((selectedClip as AudioClip).volume * 100)}%</span>
                 </div>
                 <input
@@ -480,15 +558,18 @@ export default function PropertiesPanel({
                   step="0.05"
                   value={(selectedClip as AudioClip).volume}
                   onChange={(e) => handlePropChange('volume', parseFloat(e.target.value))}
-                  className="w-full accent-indigo-500 h-1.5 rounded"
+                  className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 cursor-pointer rounded bg-slate-950 border border-slate-800' : 'h-1.5 rounded'}`}
                 />
               </div>
 
               {/* Synth Info label */}
               {(selectedClip as AudioClip).synthType && (selectedClip as AudioClip).synthType !== 'none' && (
-                <div className="bg-emerald-950/10 border border-emerald-900/20 p-2.5 rounded text-[10px] text-emerald-300 leading-relaxed font-sans">
-                  <span className="font-bold block uppercase mb-0.5">Procedural Sound Track</span>
-                  This track uses a loop synthesizer to generate bass, percussion, and chord sequences using the Web Audio API context.
+                <div className={`bg-emerald-950/10 border border-emerald-900/20 ${isCompact ? 'p-1.5 text-[9px]' : 'p-2.5 text-[10px]'} rounded text-emerald-300 leading-relaxed font-sans`}>
+                  <span className="font-bold block uppercase mb-0.5">
+                    {isLarge ? 'Procedural Audio Synthesizer Engine' : 'Procedural Sound Track'}
+                  </span>
+                  {!isCompact && "This track uses a loop synthesizer to generate bass, percussion, and chord sequences using the Web Audio API context."}
+                  {isCompact && "Procedural Web Audio API synth loop."}
                 </div>
               )}
             </div>
@@ -496,37 +577,42 @@ export default function PropertiesPanel({
 
           {/* Type-Specific Properties: TEXT OVERLAYS */}
           {selectedClip.type === 'text' && (
-            <div className="flex flex-col gap-4 animate-fadeIn">
+            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
                 <FontIcon size={13} className="text-indigo-400" />
-                Text overlay / subtitles
+                {isLarge ? 'Advanced Vector Text Overlays & Subtitles' : 'Text overlay / subtitles'}
               </div>
 
               {/* Text content input */}
               <div>
-                <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider">Text Content</label>
+                <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider">
+                  {isLarge ? 'Dynamic String Text Content Input' : 'Text Content'}
+                </label>
                 <textarea
                   id="textarea-inspector-text-val"
                   value={(selectedClip as TextClip).text}
                   onChange={(e) => handlePropChange('text', e.target.value)}
-                  rows={2}
+                  rows={isCompact ? 1 : isLarge ? 3 : 2}
                   className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans leading-relaxed resize-none"
                 />
               </div>
 
               {/* Styling parameters */}
-              <div className="bg-[#121214] p-3 rounded-lg border border-[#2A2A2D] flex flex-col gap-3">
+              <div className={`bg-[#121214] ${isCompact ? 'p-2 gap-2.5' : isLarge ? 'p-4 gap-4' : 'p-3 gap-3'} rounded-lg border border-[#2A2A2D] flex flex-col`}>
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <FontIcon size={11} className="text-indigo-400" /> Styling &amp; Typography
+                  <FontIcon size={11} className="text-indigo-400" /> 
+                  {isLarge ? 'Advanced Typography & Layout Styling' : 'Styling & Typography'}
                 </span>
 
                 <div>
-                  <label className="text-[9px] text-slate-400 block mb-0.5">Font Family</label>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">
+                    {isLarge ? 'Active Font Family Typeface' : 'Font Family'}
+                  </label>
                   <select
                     id="select-inspector-text-font"
                     value={(selectedClip as TextClip).fontFamily}
                     onChange={(e) => handlePropChange('fontFamily', e.target.value)}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
                   >
                     <option value="Inter">Inter (Sans-Serif)</option>
                     <option value="Space Grotesk">Space Grotesk (Tech Heading)</option>
@@ -537,7 +623,9 @@ export default function PropertiesPanel({
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Font Size (px)</label>
+                    <label className="text-[9px] text-slate-400 block mb-0.5">
+                      {isLarge ? 'Absolute Size (px)' : 'Font Size (px)'}
+                    </label>
                     <input
                       id="input-inspector-text-fontsize"
                       type="number"
@@ -550,7 +638,9 @@ export default function PropertiesPanel({
                   </div>
 
                   <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Text Alignment</label>
+                    <label className="text-[9px] text-slate-400 block mb-0.5">
+                      {isLarge ? 'Horizontal Alignment' : 'Alignment'}
+                    </label>
                     <select
                       id="select-inspector-text-alignment"
                       value={(selectedClip as TextClip).alignment}
@@ -564,7 +654,7 @@ export default function PropertiesPanel({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className={`${isLarge ? 'grid grid-cols-2 gap-3' : 'grid-cols-2 gap-2'} grid`}>
                   <div>
                     <label className="text-[9px] text-slate-400 block mb-0.5">Text Color</label>
                     <div className="flex items-center gap-1.5">
@@ -575,12 +665,14 @@ export default function PropertiesPanel({
                         onChange={(e) => handlePropChange('color', e.target.value)}
                         className="w-6 h-6 border border-[#2A2A2D] bg-[#161618] rounded cursor-pointer"
                       />
-                      <span className="text-[10px] font-mono text-slate-300">{(selectedClip as TextClip).color}</span>
+                      {!isCompact && <span className="text-[10px] font-mono text-slate-300">{(selectedClip as TextClip).color}</span>}
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Box Fill Color</label>
+                    <label className="text-[9px] text-slate-400 block mb-0.5">
+                      {isLarge ? 'Background Box Color' : 'Box Fill Color'}
+                    </label>
                     <div className="flex items-center gap-1.5">
                       <input
                         id="picker-inspector-text-bgcolor"
@@ -599,8 +691,8 @@ export default function PropertiesPanel({
                         }}
                         className="bg-[#161618] border border-[#2A2A2D] rounded text-[10px] text-slate-300 focus:outline-none focus:border-indigo-500"
                       >
-                        <option value="colored">Color</option>
-                        <option value="transparent">Transparent</option>
+                        <option value="colored">{isCompact ? 'Col' : 'Color'}</option>
+                        <option value="transparent">{isCompact ? 'Trans' : 'Transparent'}</option>
                       </select>
                     </div>
                   </div>
@@ -608,7 +700,7 @@ export default function PropertiesPanel({
 
                 <div>
                   <div className="flex justify-between items-center text-[9px] text-slate-400 mb-0.5">
-                    <span>Vertical Position (Y%)</span>
+                    <span>{isLarge ? 'Vertical Y-Axis Position Percentage' : isCompact ? 'Pos Y' : 'Vertical Position (Y%)'}</span>
                     <span className="font-mono">{(selectedClip as TextClip).positionY}%</span>
                   </div>
                   <input
@@ -618,7 +710,7 @@ export default function PropertiesPanel({
                     max="90"
                     value={(selectedClip as TextClip).positionY}
                     onChange={(e) => handlePropChange('positionY', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
                   />
                 </div>
 
@@ -628,7 +720,7 @@ export default function PropertiesPanel({
                     id="select-inspector-text-preset"
                     value={(selectedClip as TextClip).stylePreset || 'none'}
                     onChange={(e) => handlePropChange('stylePreset', e.target.value)}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 mb-2"
+                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 mb-2 font-medium"
                   >
                     <option value="none">Default (Plain text)</option>
                     <option value="neon">Neon Glow (Retro)</option>
@@ -644,7 +736,7 @@ export default function PropertiesPanel({
                     id="select-inspector-text-animation"
                     value={(selectedClip as TextClip).animation}
                     onChange={(e) => handlePropChange('animation', e.target.value)}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
                   >
                     <option value="none">Normal (Instant)</option>
                     <option value="fade">Cinema Fade In/Out</option>
@@ -659,12 +751,12 @@ export default function PropertiesPanel({
 
           {/* Shared Visual Clip Enhancements (Transitions & Creative FX Overlays) */}
           {(selectedClip.type === 'video' || selectedClip.type === 'image') && (
-            <div className="flex flex-col gap-4 mt-3 pt-3 border-t border-[#2A2A2D]">
+            <div className={`flex flex-col ${isCompact ? 'gap-3 mt-2.5 pt-2.5' : 'gap-4 mt-3 pt-3'} border-t border-[#2A2A2D]`}>
               {/* Transition Settings */}
-              <div className="flex flex-col gap-3 bg-[#121214] p-3 rounded-lg border border-[#2A2A2D]">
+              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
                 <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles size={11} />
-                  Transitions / Fades
+                  {isLarge ? 'Interactive Entrance Fade and Slide Transitions' : 'Transitions / Fades'}
                 </span>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -686,7 +778,7 @@ export default function PropertiesPanel({
 
                   <div>
                     <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                      <span>In Duration</span>
+                      <span>{isCompact ? 'In Dur' : 'In Duration'}</span>
                       <span className="font-mono text-[9px]">{(selectedClip.fadeInDuration ?? 0).toFixed(1)}s</span>
                     </div>
                     <input
@@ -697,7 +789,7 @@ export default function PropertiesPanel({
                       step="0.1"
                       value={selectedClip.fadeInDuration ?? 0}
                       onChange={(e) => handlePropChange('fadeInDuration', parseFloat(e.target.value))}
-                      className="w-full accent-indigo-500 h-1 rounded"
+                      className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
                     />
                   </div>
                 </div>
@@ -721,7 +813,7 @@ export default function PropertiesPanel({
 
                   <div>
                     <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                      <span>Out Duration</span>
+                      <span>{isCompact ? 'Out Dur' : 'Out Duration'}</span>
                       <span className="font-mono text-[9px]">{(selectedClip.fadeOutDuration ?? 0).toFixed(1)}s</span>
                     </div>
                     <input
@@ -732,23 +824,23 @@ export default function PropertiesPanel({
                       step="0.1"
                       value={selectedClip.fadeOutDuration ?? 0}
                       onChange={(e) => handlePropChange('fadeOutDuration', parseFloat(e.target.value))}
-                      className="w-full accent-indigo-500 h-1 rounded"
+                      className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
                     />
                   </div>
                 </div>
               </div>
 
               {/* Cross-Clip Transitions between consecutive clips on the same track */}
-              <div className="flex flex-col gap-3 bg-[#121214] p-3 rounded-lg border border-[#2A2A2D]">
+              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
                 <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles size={11} className="text-yellow-400 animate-pulse" />
-                  Cross-Clip Transition (to Next Clip)
+                  {isLarge ? 'Seamless Cross-Clip Linear Timeline Transitions' : 'Cross-Clip Transition'}
                 </span>
 
                 {nextClip ? (
                   <div className="flex flex-col gap-3 animate-fadeIn">
                     <div className="text-[10px] text-emerald-400 font-medium">
-                      Connected to consecutive clip: <span className="font-semibold text-slate-200">"{nextClip.name}"</span>
+                      {isLarge ? 'Directly connected to following clip' : 'Connected to next'}: <span className="font-semibold text-slate-200">"{nextClip.name}"</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -782,23 +874,23 @@ export default function PropertiesPanel({
                           disabled={!selectedClip.transitionType || selectedClip.transitionType === 'none'}
                           value={selectedClip.transitionDuration ?? 1.0}
                           onChange={(e) => handlePropChange('transitionDuration', parseFloat(e.target.value))}
-                          className="w-full accent-indigo-500 h-1 rounded disabled:opacity-30"
+                          className={`w-full accent-indigo-500 disabled:opacity-30 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
                         />
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div className="text-[10px] text-slate-500 leading-relaxed font-sans">
-                    Place two clips side-by-side on this track to enable smooth <span className="text-indigo-400 font-bold">Fade, Dissolve, Slide, or Wipe</span> transitions between them!
+                    {!isCompact ? 'Place two clips side-by-side on this track to enable smooth Fade, Dissolve, Slide, or Wipe transitions between them!' : 'Adjacent clips enable transitions.'}
                   </div>
                 )}
               </div>
 
               {/* Professional Chroma & Luma Keying */}
-              <div className="flex flex-col gap-3 bg-[#121214] p-3 rounded-lg border border-[#2A2A2D]">
+              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
                 <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <Sliders size={11} />
-                  Background Removal &amp; Keying
+                  {isLarge ? 'Hardware Accelerated Alpha Keying & Matte Masks' : 'Background Removal & Keying'}
                 </span>
 
                 {/* Chroma Key (Green Screen) */}
@@ -812,9 +904,9 @@ export default function PropertiesPanel({
                         onChange={(e) => handlePropChange('chromaKeyEnabled', e.target.checked)}
                         className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
                       />
-                      <span>Chroma Key (Color Filter)</span>
+                      <span>{isLarge ? 'Chrominance-Based Chroma Key Filter' : 'Chroma Key (Green Screen)'}</span>
                     </label>
-                    <span className="text-[9px] bg-indigo-950/40 text-indigo-400 border border-indigo-900/40 px-1 rounded font-mono">PRO</span>
+                    {!isCompact && <span className="text-[9px] bg-indigo-950/40 text-indigo-400 border border-indigo-900/40 px-1 rounded font-mono">PRO</span>}
                   </div>
 
                   {selectedClip.chromaKeyEnabled && (
@@ -830,9 +922,11 @@ export default function PropertiesPanel({
                               onChange={(e) => handlePropChange('chromaKeyColor', e.target.value)}
                               className="w-7 h-6 bg-transparent border-0 rounded cursor-pointer p-0"
                             />
-                            <span className="font-mono text-[10px] text-slate-300">
-                              {selectedClip.chromaKeyColor || '#00ff00'}
-                            </span>
+                            {!isCompact && (
+                              <span className="font-mono text-[10px] text-slate-300">
+                                {selectedClip.chromaKeyColor || '#00ff00'}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -875,7 +969,7 @@ export default function PropertiesPanel({
                           step="1"
                           value={selectedClip.chromaKeySimilarity ?? 20}
                           onChange={(e) => handlePropChange('chromaKeySimilarity', parseInt(e.target.value))}
-                          className="w-full accent-indigo-500 h-1 rounded"
+                          className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
                         />
                       </div>
 
@@ -892,7 +986,7 @@ export default function PropertiesPanel({
                           step="1"
                           value={selectedClip.chromaKeySmoothness ?? 10}
                           onChange={(e) => handlePropChange('chromaKeySmoothness', parseInt(e.target.value))}
-                          className="w-full accent-indigo-500 h-1 rounded"
+                          className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
                         />
                       </div>
                     </div>
@@ -910,7 +1004,7 @@ export default function PropertiesPanel({
                         onChange={(e) => handlePropChange('lumaKeyEnabled', e.target.checked)}
                         className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
                       />
-                      <span>Luma Key (Matte Remover)</span>
+                      <span>{isLarge ? 'Luminance Threshold Luma Matte' : 'Luma Key (Matte Remover)'}</span>
                     </label>
                   </div>
 
@@ -943,7 +1037,7 @@ export default function PropertiesPanel({
                             step="1"
                             value={selectedClip.lumaKeyThreshold ?? 15}
                             onChange={(e) => handlePropChange('lumaKeyThreshold', parseInt(e.target.value))}
-                            className="w-full accent-indigo-500 h-1 rounded"
+                            className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
                           />
                         </div>
                       </div>
@@ -953,10 +1047,10 @@ export default function PropertiesPanel({
               </div>
 
               {/* Creative FX Toggles */}
-              <div className="flex flex-col gap-3 bg-[#121214] p-3 rounded-lg border border-[#2A2A2D]">
+              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
                 <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <Film size={11} />
-                  Creative FX Overlays
+                  {isLarge ? 'Post-Processing Creative FX Overlay Enhancements' : 'Creative FX Overlays'}
                 </span>
 
                 <div className="flex flex-col gap-2">
@@ -968,7 +1062,7 @@ export default function PropertiesPanel({
                       onChange={(e) => handlePropChange('effectVignette', e.target.checked)}
                       className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
                     />
-                    <span>Cinematic Vignette (Soft Edges)</span>
+                    <span>{isLarge ? 'Cinematic Dark Vignette Lens Effect' : 'Cinematic Vignette (Soft Edges)'}</span>
                   </label>
 
                   <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
@@ -979,7 +1073,7 @@ export default function PropertiesPanel({
                       onChange={(e) => handlePropChange('effectFilmGrain', e.target.checked)}
                       className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
                     />
-                    <span>Film Grain (Vintage Noise)</span>
+                    <span>{isLarge ? 'Retro Textured Silver Halide Film Grain' : 'Film Grain (Vintage Noise)'}</span>
                   </label>
 
                   <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
@@ -990,7 +1084,7 @@ export default function PropertiesPanel({
                       onChange={(e) => handlePropChange('effectScanlines', e.target.checked)}
                       className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
                     />
-                    <span>Retro TV Scanlines (CRT Grid)</span>
+                    <span>{isLarge ? 'Cathode-Ray Tube (CRT) scanlines overlay' : 'Retro TV Scanlines (CRT Grid)'}</span>
                   </label>
 
                   <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
@@ -1001,7 +1095,7 @@ export default function PropertiesPanel({
                       onChange={(e) => handlePropChange('effectGlitch', e.target.checked)}
                       className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
                     />
-                    <span>Digital Glitch &amp; Slice Shake</span>
+                    <span>{isLarge ? 'Analog Signal Distortion & Video Glitch' : 'Digital Glitch & Slice Shake'}</span>
                   </label>
 
                   <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
@@ -1012,7 +1106,7 @@ export default function PropertiesPanel({
                       onChange={(e) => handlePropChange('effectMirror', e.target.checked)}
                       className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
                     />
-                    <span>Mirror Flip (Horizontal Rotate)</span>
+                    <span>{isLarge ? 'Horizontal Mirror Flip Kaleidoscope' : 'Mirror Flip (Horizontal Rotate)'}</span>
                   </label>
                 </div>
               </div>
@@ -1021,19 +1115,21 @@ export default function PropertiesPanel({
 
           {/* Keyframe Animation Controls Panel */}
           {(selectedClip.type === 'video' || selectedClip.type === 'image' || selectedClip.type === 'text') && (
-            <div className="flex flex-col gap-3 mt-3 pt-3 border-t border-[#2A2A2D]">
+            <div className={`flex flex-col gap-3 mt-3 pt-3 border-t border-[#2A2A2D]`}>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <Key size={11} className="animate-pulse" />
-                  Keyframe Motion &amp; Transform
+                  {isLarge ? 'Interpolated Temporal Keyframe Motion & Layout Transforms' : 'Keyframe Motion & Transform'}
                 </span>
-                <span className="text-[9px] text-slate-500 font-mono bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-800">
-                  Playhead: {clipTime.toFixed(1)}s
-                </span>
+                {!isCompact && (
+                  <span className="text-[9px] text-slate-500 font-mono bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-800">
+                    Playhead: {clipTime.toFixed(1)}s
+                  </span>
+                )}
               </div>
 
               {/* Slider controls with keyframe diamond toggles */}
-              <div className="flex flex-col gap-3 bg-[#121214] p-3 rounded-lg border border-[#2A2A2D]">
+              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
                 
                 {/* Opacity Transform */}
                 <div className="flex flex-col gap-1.5">
@@ -1053,7 +1149,9 @@ export default function PropertiesPanel({
                       >
                         {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.opacity !== undefined) ? '◆' : '◇'}
                       </button>
-                      <span className="text-slate-300 font-medium">Opacity</span>
+                      <span className="text-slate-300 font-medium">
+                        {isLarge ? 'Absolute Transparency / Layer Opacity Value' : isCompact ? 'Opac' : 'Opacity'}
+                      </span>
                     </div>
                     <span className="font-mono text-slate-400 text-[10px]">
                       {Math.round(getPropertyValueAtTime('opacity') * 100)}%
@@ -1067,7 +1165,7 @@ export default function PropertiesPanel({
                     step="0.05"
                     value={getPropertyValueAtTime('opacity')}
                     onChange={(e) => handleUpdateProperty('opacity', parseFloat(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-850 cursor-pointer rounded' : 'h-1 rounded'}`}
                   />
                 </div>
 
@@ -1089,7 +1187,9 @@ export default function PropertiesPanel({
                       >
                         {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.scale !== undefined) ? '◆' : '◇'}
                       </button>
-                      <span className="text-slate-300 font-medium">Scale (Size)</span>
+                      <span className="text-slate-300 font-medium">
+                        {isLarge ? 'Uniform Geometric Scale Factor Dimension' : isCompact ? 'Scale' : 'Scale (Size)'}
+                      </span>
                     </div>
                     <span className="font-mono text-slate-400 text-[10px]">
                       {getPropertyValueAtTime('scale').toFixed(2)}x
@@ -1103,7 +1203,7 @@ export default function PropertiesPanel({
                     step="0.05"
                     value={getPropertyValueAtTime('scale')}
                     onChange={(e) => handleUpdateProperty('scale', parseFloat(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-855 cursor-pointer rounded' : 'h-1 rounded'}`}
                   />
                 </div>
 
@@ -1125,7 +1225,9 @@ export default function PropertiesPanel({
                       >
                         {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionX !== undefined) ? '◆' : '◇'}
                       </button>
-                      <span className="text-slate-300 font-medium">Position X (Offset)</span>
+                      <span className="text-slate-300 font-medium">
+                        {isLarge ? 'Horizontal X-Axis Coordinate Location Offset' : isCompact ? 'Pos X' : 'Position X (Offset)'}
+                      </span>
                     </div>
                     <span className="font-mono text-slate-400 text-[10px]">
                       {getPropertyValueAtTime('positionX') > 0 ? '+' : ''}{Math.round(getPropertyValueAtTime('positionX'))}%
@@ -1139,7 +1241,7 @@ export default function PropertiesPanel({
                     step="1"
                     value={getPropertyValueAtTime('positionX')}
                     onChange={(e) => handleUpdateProperty('positionX', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-860 cursor-pointer rounded' : 'h-1 rounded'}`}
                   />
                 </div>
 
@@ -1162,7 +1264,9 @@ export default function PropertiesPanel({
                         {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionY !== undefined) ? '◆' : '◇'}
                       </button>
                       <span className="text-slate-300 font-medium">
-                        {selectedClip.type === 'text' ? 'Vertical Position' : 'Position Y (Offset)'}
+                        {selectedClip.type === 'text' 
+                          ? (isLarge ? 'Vertical Y-Axis Canvas Position' : 'Vertical Position') 
+                          : (isLarge ? 'Vertical Y-Axis Coordinate Location Offset' : isCompact ? 'Pos Y' : 'Position Y (Offset)')}
                       </span>
                     </div>
                     <span className="font-mono text-slate-400 text-[10px]">
@@ -1178,7 +1282,7 @@ export default function PropertiesPanel({
                     step="1"
                     value={getPropertyValueAtTime('positionY')}
                     onChange={(e) => handleUpdateProperty('positionY', parseInt(e.target.value))}
-                    className="w-full accent-indigo-500 h-1 rounded"
+                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-865 cursor-pointer rounded' : 'h-1 rounded'}`}
                   />
                 </div>
 
@@ -1189,7 +1293,7 @@ export default function PropertiesPanel({
                 <div className="flex flex-col gap-2 bg-[#0F0F10] p-3 rounded-lg border border-[#2A2A2D]">
                   <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold uppercase tracking-wider">
                     <span className="flex items-center gap-1 text-slate-400">
-                      <span>◆</span> Keyframes ({selectedClip.keyframes.length})
+                      <span>◆</span> {isLarge ? 'Active Multi-Parameter Interpolation Keyframes' : 'Keyframes'} ({selectedClip.keyframes.length})
                     </span>
                     <button
                       id="btn-clear-keyframes"
