@@ -1,0 +1,6 @@
+{
+  "name": "VividCut Video Editor",
+  "description": "An interactive, multi-track timeline video editor in the browser, complete with media splitting, text overlays, visual filters, transition simulations, and real canvas rendering.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
