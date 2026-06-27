@@ -793,9 +793,9 @@ export default function App() {
       });
     });
 
-    if (maxClipEnd > newProj.duration) {
-      newProj.duration = Math.ceil(maxClipEnd);
-    }
+    // Ensure project duration matches the end of the longest clip, unless user manually set a higher duration
+    const baseDuration = (newProj as any).userDuration || 0;
+    newProj.duration = Math.max(5, baseDuration, Math.ceil(maxClipEnd));
 
     setProject(newProj);
     if (recordHistory) {
@@ -868,8 +868,8 @@ export default function App() {
           name: asset.name,
           type: 'video',
           start: currentTime,
-          duration: Math.min(5, asset.duration), // Limit to 5s default size
-          sourceDuration: asset.duration,
+          duration: asset.duration && asset.duration !== Infinity ? asset.duration : 5,
+          sourceDuration: asset.duration && asset.duration !== Infinity ? asset.duration : 5,
           sourceOffset: 0,
           url: asset.url,
           proceduralType: asset.proceduralType,
@@ -901,8 +901,8 @@ export default function App() {
           name: asset.name,
           type: 'audio',
           start: currentTime,
-          duration: Math.min(10, asset.duration),
-          sourceDuration: asset.duration,
+          duration: asset.duration && asset.duration !== Infinity ? asset.duration : 10,
+          sourceDuration: asset.duration && asset.duration !== Infinity ? asset.duration : 10,
           sourceOffset: 0,
           url: asset.url,
           synthType: asset.synthType,

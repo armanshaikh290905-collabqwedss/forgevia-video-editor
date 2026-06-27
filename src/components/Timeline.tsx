@@ -174,6 +174,11 @@ export default function Timeline({
   const panStartXRef = useRef<number>(0);
   const panStartScrollLeftRef = useRef<number>(0);
 
+  // Auto-scroll refs
+  const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastMouseXRef = useRef<number>(0);
+  const containerRectRef = useRef<DOMRect | null>(null);
+
   // Sync prop refs to prevent rebuilding event listeners
   const currentTimeRef = useRef<number>(currentTime);
   currentTimeRef.current = currentTime;
@@ -258,6 +263,7 @@ export default function Timeline({
     trackId: string;
     initialStart: number;
     initialMouseX: number;
+    initialScrollLeft: number;
     currentStart: number;
     snappedStart: number;
     currentTrackId: string;
@@ -281,6 +287,7 @@ export default function Timeline({
     initialDuration: number;
     initialSourceOffset: number;
     initialMouseX: number;
+    initialScrollLeft: number;
     currentStart: number;
     currentDuration: number;
     currentSourceOffset: number;
@@ -317,6 +324,60 @@ export default function Timeline({
 
   // Hover state for the ruler to show ghost playhead & tooltip
   const [hoverRulerTime, setHoverRulerTime] = useState<number | null>(null);
+
+  // Dynamic active duration calculation based on project length and currently edited items
+  let activeDuration = project.duration;
+  
+  if (dragState) {
+    if (dragState.isMultiDrag && dragState.draggedClips) {
+      dragState.draggedClips.forEach(dc => {
+        const originalClip = project.tracks
+          .find(t => t.id === dc.trackId)
+          ?.clips.find(c => c.id === dc.clipId);
+        if (originalClip) {
+          const end = dc.snappedStart + originalClip.duration;
+          if (end > activeDuration) {
+            activeDuration = end;
+          }
+        }
+      });
+    } else {
+      const originalClip = project.tracks
+        .find(t => t.id === dragState.trackId)
+        ?.clips.find(c => c.id === dragState.clipId);
+      if (originalClip) {
+        const end = dragState.snappedStart + originalClip.duration;
+        if (end > activeDuration) {
+          activeDuration = end;
+        }
+      }
+    }
+  }
+  
+  if (trimState) {
+    const end = trimState.currentStart + trimState.currentDuration;
+    if (end > activeDuration) {
+      activeDuration = end;
+    }
+  }
+  
+  if (externalDrag) {
+    const assetDuration = (externalDrag.itemType === 'effect' || externalDrag.itemType === 'transition')
+      ? 3
+      : (externalDrag.data?.duration || 5);
+    const end = externalDrag.snappedTime + assetDuration;
+    if (end > activeDuration) {
+      activeDuration = end;
+    }
+  }
+
+  // Calculate dynamic workspace duration (ensures blank workspace of at least 5 minutes, extending dynamically as we scroll)
+  const viewportWidthForWorkspace = tracksContainerRef.current ? tracksContainerRef.current.clientWidth : 800;
+  const visibleEndTime = (scrollLeftState + viewportWidthForWorkspace) / zoom;
+  let workspaceDuration = Math.max(activeDuration + 300, visibleEndTime + 120);
+
+  // Keep projectDurationRef synced so zoom constraints stay correct
+  projectDurationRef.current = workspaceDuration;
 
   // Toggle track locking status helper
   const handleToggleLockTrack = (trackId: string) => {
@@ -435,13 +496,14 @@ export default function Timeline({
     const clipId = `clip_${data.id || Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     
     if (itemType === 'video') {
+      const clipDuration = data.duration && data.duration !== Infinity ? data.duration : 5;
       return {
         id: clipId,
         name: data.name,
         type: 'video',
         start: dropTime,
-        duration: Math.min(5, data.duration || 5),
-        sourceDuration: data.duration || 5,
+        duration: clipDuration,
+        sourceDuration: clipDuration,
         sourceOffset: 0,
         url: data.url,
         proceduralType: data.proceduralType,
@@ -468,13 +530,14 @@ export default function Timeline({
         saturation: 100
       } as ImageClip;
     } else if (itemType === 'audio') {
+      const clipDuration = data.duration && data.duration !== Infinity ? data.duration : 10;
       return {
         id: clipId,
         name: data.name,
         type: 'audio',
         start: dropTime,
-        duration: Math.min(10, data.duration || 10),
-        sourceDuration: data.duration || 10,
+        duration: clipDuration,
+        sourceDuration: clipDuration,
         sourceOffset: 0,
         url: data.url,
         synthType: data.synthType || 'none',
@@ -755,7 +818,7 @@ export default function Timeline({
   // Zoom bounds helper
   const getZoomLimits = () => {
     const viewportWidth = tracksContainerRef.current ? tracksContainerRef.current.clientWidth - 80 : 800;
-    const minZoom = Math.max(1, viewportWidth / projectDurationRef.current);
+    const minZoom = Math.max(0.01, viewportWidth / projectDurationRef.current);
     const maxZoom = 500;
     return { minZoom, maxZoom };
   };
@@ -972,7 +1035,7 @@ export default function Timeline({
     const scrollLeft = tracksContainerRef.current.scrollLeft;
     const clickX = clientX - rect.left + scrollLeft - 80; // 80px offset for the track label sidebar
     
-    const targetTime = Math.max(0, Math.min(project.duration, clickX / zoom));
+    const targetTime = Math.max(0, Math.min(workspaceDuration, clickX / zoom));
     onTimeUpdate(targetTime);
   };
 
@@ -1150,6 +1213,7 @@ export default function Timeline({
         trackId: trackId,
         initialStart: clip.start,
         initialMouseX: e.clientX,
+        initialScrollLeft: tracksContainerRef.current?.scrollLeft || 0,
         currentStart: clip.start,
         snappedStart: clip.start,
         currentTrackId: trackId,
@@ -1163,6 +1227,7 @@ export default function Timeline({
         trackId: trackId,
         initialStart: clip.start,
         initialMouseX: e.clientX,
+        initialScrollLeft: tracksContainerRef.current?.scrollLeft || 0,
         currentStart: clip.start,
         snappedStart: clip.start,
         currentTrackId: trackId,
@@ -1184,6 +1249,7 @@ export default function Timeline({
       initialDuration: clip.duration,
       initialSourceOffset: clip.sourceOffset || 0,
       initialMouseX: e.clientX,
+      initialScrollLeft: tracksContainerRef.current?.scrollLeft || 0,
       currentStart: clip.start,
       currentDuration: clip.duration,
       currentSourceOffset: clip.sourceOffset || 0
@@ -1202,6 +1268,7 @@ export default function Timeline({
       initialDuration: clip.duration,
       initialSourceOffset: clip.sourceOffset || 0,
       initialMouseX: e.clientX,
+      initialScrollLeft: tracksContainerRef.current?.scrollLeft || 0,
       currentStart: clip.start,
       currentDuration: clip.duration,
       currentSourceOffset: clip.sourceOffset || 0
@@ -1265,16 +1332,15 @@ export default function Timeline({
   };
 
   // Drag handler for sliding clips or adjusting volume keyframes
-  const handleTimelineMouseMove = (e: React.MouseEvent) => {
+  const processMouseMove = (clientX: number, clientY: number) => {
     if (isScrubbing) {
-      e.preventDefault();
-      scrubToMouseX(e.clientX);
+      scrubToMouseX(clientX);
       return;
     }
 
     if (isPanningRef.current) {
       if (tracksContainerRef.current) {
-        const dx = e.clientX - panStartXRef.current;
+        const dx = clientX - panStartXRef.current;
         tracksContainerRef.current.scrollLeft = panStartScrollLeftRef.current - dx;
         setScrollLeftState(tracksContainerRef.current.scrollLeft);
       }
@@ -1282,14 +1348,13 @@ export default function Timeline({
     }
 
     if (activeKfDrag) {
-      e.preventDefault();
       const track = project.tracks.find(t => t.id === activeKfDrag.trackId);
       if (!track) return;
       const clip = track.clips.find(c => c.id === activeKfDrag.clipId);
       if (!clip) return;
       
-      const deltaX = e.clientX - activeKfDrag.initialMouseX;
-      const deltaY = e.clientY - activeKfDrag.initialMouseY;
+      const deltaX = clientX - activeKfDrag.initialMouseX;
+      const deltaY = clientY - activeKfDrag.initialMouseY;
       
       // X-axis adjusts time
       const deltaTime = deltaX / zoom;
@@ -1318,9 +1383,52 @@ export default function Timeline({
       return;
     }
 
+    // Find active duration dynamically for snapping limit
+    let currentActiveDuration = project.duration;
+    if (dragState) {
+      if (dragState.isMultiDrag && dragState.draggedClips) {
+        dragState.draggedClips.forEach(dc => {
+          const originalClip = project.tracks
+            .find(t => t.id === dc.trackId)
+            ?.clips.find(c => c.id === dc.clipId);
+          if (originalClip) {
+            const end = dc.snappedStart + originalClip.duration;
+            if (end > currentActiveDuration) {
+              currentActiveDuration = end;
+            }
+          }
+        });
+      } else {
+        const originalClip = project.tracks
+          .find(t => t.id === dragState.trackId)
+          ?.clips.find(c => c.id === dragState.clipId);
+        if (originalClip) {
+          const end = dragState.snappedStart + originalClip.duration;
+          if (end > currentActiveDuration) {
+            currentActiveDuration = end;
+          }
+        }
+      }
+    }
     if (trimState) {
-      e.preventDefault();
-      const deltaX = e.clientX - trimState.initialMouseX;
+      const end = trimState.currentStart + trimState.currentDuration;
+      if (end > currentActiveDuration) {
+        currentActiveDuration = end;
+      }
+    }
+    if (externalDrag) {
+      const assetDuration = (externalDrag.itemType === 'effect' || externalDrag.itemType === 'transition')
+        ? 3
+        : (externalDrag.data?.duration || 5);
+      const end = externalDrag.snappedTime + assetDuration;
+      if (end > currentActiveDuration) {
+        currentActiveDuration = end;
+      }
+    }
+
+    if (trimState) {
+      const currentScrollLeft = tracksContainerRef.current?.scrollLeft || 0;
+      const deltaX = (clientX - trimState.initialMouseX) + (currentScrollLeft - trimState.initialScrollLeft);
       const deltaSecs = deltaX / zoom;
 
       const track = project.tracks.find(t => t.id === trimState.trackId);
@@ -1342,7 +1450,7 @@ export default function Timeline({
 
         const snapPoints = new Set<number>();
         snapPoints.add(0);
-        snapPoints.add(project.duration);
+        snapPoints.add(currentActiveDuration);
         snapPoints.add(currentTime);
 
         project.tracks.forEach(t => {
@@ -1365,20 +1473,14 @@ export default function Timeline({
       };
 
       if (trimState.edge === 'left') {
-        // Left Trim constraints
-        // 1. newStart >= 0  => possibleDelta >= -initialStart
-        // 2. newDuration >= minDuration => possibleDelta <= initialDuration - minDuration
-        // 3. For video/audio: sourceOffset >= 0 => possibleDelta >= -initialSourceOffset
         let minDelta = -trimState.initialStart;
         if (clip.type === 'video' || clip.type === 'audio') {
           minDelta = Math.max(minDelta, -trimState.initialSourceOffset);
         }
         const maxDelta = trimState.initialDuration - minDuration;
 
-        // Apply clamping on raw delta
         possibleDelta = Math.max(minDelta, Math.min(maxDelta, possibleDelta));
 
-        // Try snapping
         const targetStart = trimState.initialStart + possibleDelta;
         const snappedStartPoint = getSnapPoint(targetStart);
         if (snappedStartPoint !== null) {
@@ -1399,9 +1501,6 @@ export default function Timeline({
         } : null);
 
       } else {
-        // Right Trim constraints
-        // 1. newDuration >= minDuration => possibleDelta >= minDuration - initialDuration
-        // 2. For video/audio: newDuration + sourceOffset <= sourceDuration
         const minDelta = minDuration - trimState.initialDuration;
         let maxDelta = Infinity;
 
@@ -1410,10 +1509,8 @@ export default function Timeline({
           maxDelta = srcDur - trimState.initialSourceOffset - trimState.initialDuration;
         }
 
-        // Apply clamping on raw delta
         possibleDelta = Math.max(minDelta, Math.min(maxDelta, possibleDelta));
 
-        // Try snapping
         const targetEnd = trimState.initialStart + trimState.initialDuration + possibleDelta;
         const snappedEndPoint = getSnapPoint(targetEnd);
         if (snappedEndPoint !== null) {
@@ -1438,12 +1535,11 @@ export default function Timeline({
     }
 
     if (selectionBox) {
-      e.preventDefault();
       const rect = tracksContainerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const currentX = e.clientX - rect.left + (tracksContainerRef.current?.scrollLeft || 0);
-      const currentY = e.clientY - rect.top;
+      const currentX = clientX - rect.left + (tracksContainerRef.current?.scrollLeft || 0);
+      const currentY = clientY - rect.top;
 
       setSelectionBox(prev => prev ? {
         ...prev,
@@ -1500,7 +1596,8 @@ export default function Timeline({
 
     if (!dragState) return;
 
-    const deltaX = e.clientX - dragState.initialMouseX;
+    const currentScrollLeft = tracksContainerRef.current?.scrollLeft || 0;
+    const deltaX = (clientX - dragState.initialMouseX) + (currentScrollLeft - dragState.initialScrollLeft);
     const deltaSecs = deltaX / zoom;
 
     if (dragState.isMultiDrag && dragState.draggedClips) {
@@ -1528,7 +1625,7 @@ export default function Timeline({
 
             const snapPoints = new Set<number>();
             snapPoints.add(0);
-            snapPoints.add(project.duration);
+            snapPoints.add(currentActiveDuration);
             snapPoints.add(currentTime);
 
             project.tracks.forEach(t => {
@@ -1593,34 +1690,29 @@ export default function Timeline({
       } : null);
 
     } else {
-      // Find active track
       const track = project.tracks.find(t => t.id === dragState.trackId);
       if (!track) return;
 
-      // Adjust start time safely, clamping it inside boundaries
       const originalClip = track.clips.find(c => c.id === dragState.clipId);
       if (!originalClip) return;
 
       const currentStart = Math.max(0, dragState.initialStart + deltaSecs);
       let targetStart = currentStart;
 
-      // Magnetic snapping logic
       let activeSnapTime: number | null = null;
       if (magnetEnabled) {
         const targetEnd = targetStart + originalClip.duration;
-        const snapThresholdPx = 12; // Snapping radius in screen pixels
+        const snapThresholdPx = 12;
         const snapThresholdSecs = snapThresholdPx / zoom;
         let bestDiff = snapThresholdSecs;
         let bestSnapPoint: number | null = null;
         let snapTargetType: 'start' | 'end' | null = null;
 
-        // Collect all snap candidate times
         const snapPoints = new Set<number>();
-        snapPoints.add(0); // Snap to start of timeline
-        snapPoints.add(project.duration); // Snap to end of timeline
-        snapPoints.add(currentTime); // Snap to current playhead / scrubber time
+        snapPoints.add(0);
+        snapPoints.add(currentActiveDuration);
+        snapPoints.add(currentTime);
 
-        // Snap to any other clip's boundary (either start or end) in any track
         project.tracks.forEach(t => {
           t.clips.forEach(c => {
             if (c.id !== originalClip.id) {
@@ -1631,7 +1723,6 @@ export default function Timeline({
         });
 
         for (const pt of snapPoints) {
-          // Distance from start of dragged clip to this point
           const diffStart = Math.abs(targetStart - pt);
           if (diffStart < bestDiff) {
             bestDiff = diffStart;
@@ -1639,7 +1730,6 @@ export default function Timeline({
             snapTargetType = 'start';
           }
 
-          // Distance from end of dragged clip to this point
           const diffEnd = Math.abs(targetEnd - pt);
           if (diffEnd < bestDiff) {
             bestDiff = diffEnd;
@@ -1660,7 +1750,6 @@ export default function Timeline({
 
       setSnapLineTime(activeSnapTime);
 
-      // Collision resolver for non-ripple mode
       const resolveCollisions = (targetTrackId: string, clipId: string, testStart: number, duration: number): number => {
         const targetTrack = project.tracks.find(t => t.id === targetTrackId);
         if (!targetTrack) return testStart;
@@ -1726,7 +1815,136 @@ export default function Timeline({
     }
   };
 
+  const startAutoScroll = () => {
+    if (autoScrollTimerRef.current) return;
+    autoScrollTimerRef.current = setInterval(() => {
+      const container = tracksContainerRef.current;
+      const rect = containerRectRef.current;
+      if (!container || !rect) return;
+
+      const mouseX = lastMouseXRef.current - rect.left;
+      const rightThreshold = rect.width - 80;
+      const leftThreshold = 140;
+
+      let scrolled = false;
+      let speed = 0;
+      if (mouseX > rightThreshold) {
+        speed = Math.max(2, Math.min(30, (mouseX - rightThreshold) * 0.4));
+        container.scrollLeft += speed;
+        setScrollLeftState(container.scrollLeft);
+        scrolled = true;
+      } else if (mouseX < leftThreshold && container.scrollLeft > 0) {
+        speed = -Math.max(2, Math.min(30, (leftThreshold - mouseX) * 0.4));
+        container.scrollLeft += speed;
+        setScrollLeftState(container.scrollLeft);
+        scrolled = true;
+      }
+
+      if (scrolled) {
+        // Recalculate duration and visual representation
+        let tempActiveDuration = project.duration;
+        if (dragState) {
+          const originalClip = project.tracks
+            .find(t => t.id === dragState.trackId)
+            ?.clips.find(c => c.id === dragState.clipId);
+          if (originalClip) {
+            const end = dragState.snappedStart + originalClip.duration;
+            if (end > tempActiveDuration) tempActiveDuration = end;
+          }
+        } else if (trimState) {
+          const end = trimState.currentStart + trimState.currentDuration;
+          if (end > tempActiveDuration) tempActiveDuration = end;
+        } else if (externalDrag) {
+          const assetDuration = (externalDrag.itemType === 'effect' || externalDrag.itemType === 'transition')
+            ? 3
+            : (externalDrag.data?.duration || 5);
+          const end = externalDrag.snappedTime + assetDuration;
+          if (end > tempActiveDuration) tempActiveDuration = end;
+        }
+
+        if (externalDrag) {
+          const scrollLeft = container.scrollLeft;
+          const relativeX = lastMouseXRef.current - rect.left + scrollLeft - 80;
+          const hoverTime = Math.max(0, relativeX / zoom);
+          let snappedTime = hoverTime;
+          
+          if (magnetEnabled) {
+            const snapThresholdPx = 12;
+            const snapThresholdSecs = snapThresholdPx / zoom;
+            let bestDiff = snapThresholdSecs;
+            let bestSnapPoint: number | null = null;
+            
+            const snapPoints = new Set<number>();
+            snapPoints.add(0);
+            snapPoints.add(tempActiveDuration);
+            snapPoints.add(currentTime);
+            
+            project.tracks.forEach(t => {
+              t.clips.forEach(c => {
+                snapPoints.add(c.start);
+                snapPoints.add(c.start + c.duration);
+              });
+            });
+            
+            for (const pt of snapPoints) {
+              const diff = Math.abs(hoverTime - pt);
+              if (diff < bestDiff) {
+                bestDiff = diff;
+                bestSnapPoint = pt;
+              }
+            }
+            if (bestSnapPoint !== null) {
+              snappedTime = bestSnapPoint;
+            }
+          }
+          
+          setExternalDrag(prev => prev ? {
+            ...prev,
+            hoverTime,
+            snappedTime
+          } : null);
+        } else {
+          processMouseMove(lastMouseXRef.current, 0);
+        }
+      }
+    }, 16);
+  };
+
+  const stopAutoScroll = () => {
+    if (autoScrollTimerRef.current) {
+      clearInterval(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = null;
+    }
+  };
+
+  const handleTimelineMouseMove = (e: React.MouseEvent) => {
+    lastMouseXRef.current = e.clientX;
+    containerRectRef.current = tracksContainerRef.current?.getBoundingClientRect() || null;
+
+    if (dragState || trimState || externalDrag) {
+      const container = tracksContainerRef.current;
+      if (container) {
+        const rect = containerRectRef.current!;
+        const mouseX = e.clientX - rect.left;
+        const rightThreshold = rect.width - 80;
+        const leftThreshold = 140;
+
+        if (mouseX > rightThreshold || (mouseX < leftThreshold && container.scrollLeft > 0)) {
+          startAutoScroll();
+        } else {
+          stopAutoScroll();
+        }
+      }
+    } else {
+      stopAutoScroll();
+    }
+
+    processMouseMove(e.clientX, e.clientY);
+  };
+
   const handleTimelineMouseUp = () => {
+    stopAutoScroll();
+
     if (isPanningRef.current) {
       isPanningRef.current = false;
       document.body.style.cursor = '';
@@ -1866,7 +2084,7 @@ export default function Timeline({
   };
 
   // Visual offsets
-  const totalTimelineWidth = project.duration * zoom;
+  const totalTimelineWidth = workspaceDuration * zoom;
 
   const findBestInterval = (z: number) => {
     // We want tick labels to have at least 85px space between each other for readability
@@ -1897,14 +2115,14 @@ export default function Timeline({
     
     // Add small buffer to prevent ticks disappearing abruptly at the viewport boundaries
     const startTick = Math.max(0, Math.floor((visibleStartTime - 1) / interval) * interval);
-    const endTick = Math.min(project.duration, Math.ceil((visibleEndTime + 1) / interval) * interval);
+    const endTick = Math.min(workspaceDuration, Math.ceil((visibleEndTime + 1) / interval) * interval);
 
     // Render major, medium, and minor ticks
     // Divide interval into 10 steps to draw high-density sub-seconds
     const subSteps = 10;
     const step = interval / subSteps;
     const startStep = Math.max(0, Math.floor(startTick / step) * step);
-    const endStep = Math.min(project.duration, Math.ceil(endTick / step) * step);
+    const endStep = Math.min(workspaceDuration, Math.ceil(endTick / step) * step);
 
     for (let s = startStep; s <= endStep; s += step) {
       const roundedS = Math.round(s * 1000) / 1000;
@@ -1968,7 +2186,7 @@ export default function Timeline({
     
     const interval = findBestInterval(zoom);
     const startTick = Math.max(0, Math.floor((visibleStartTime - 1) / interval) * interval);
-    const endTick = Math.min(project.duration, Math.ceil((visibleEndTime + 1) / interval) * interval);
+    const endTick = Math.min(workspaceDuration, Math.ceil((visibleEndTime + 1) / interval) * interval);
 
     for (let s = startTick; s <= endTick; s += interval) {
       const roundedS = Math.round(s * 1000) / 1000;
@@ -2408,10 +2626,10 @@ export default function Timeline({
           <input
             id="timeline-zoom-slider"
             type="range"
-            min={Math.max(1, Math.round(tracksContainerRef.current ? (tracksContainerRef.current.clientWidth - 80) / project.duration : 1))}
+            min={Math.max(0.01, tracksContainerRef.current ? (tracksContainerRef.current.clientWidth - 80) / project.duration : 0.1)}
             max={500}
-            step={1}
-            value={Math.round(zoom)}
+            step={0.01}
+            value={zoom}
             onChange={(e) => triggerZoomTo(Number(e.target.value))}
             className="w-28 sm:w-36 accent-indigo-500 h-1 bg-[#2A2A2D] rounded-full cursor-ew-resize focus:outline-none"
             title="Adjust horizontal scale"
@@ -2427,7 +2645,7 @@ export default function Timeline({
           </button>
 
           <span className="text-[10px] text-indigo-400 font-mono font-bold bg-indigo-950/40 border border-indigo-900/40 px-1.5 py-0.5 rounded select-none min-w-[50px] text-center">
-            {Math.round(zoom)} px/s
+            {zoom < 1 ? zoom.toFixed(2) : Math.round(zoom)} px/s
           </span>
         </div>
       </div>

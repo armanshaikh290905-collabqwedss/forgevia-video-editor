@@ -345,6 +345,9 @@ export default function MediaLibrary({
         };
 
         if (type === 'video' || type === 'audio') {
+          // Add first with a default duration so it shows up immediately
+          onAddAsset(newAsset);
+
           const tempEl = document.createElement(type) as HTMLVideoElement | HTMLAudioElement;
           tempEl.src = objectUrl;
           tempEl.addEventListener('loadedmetadata', () => {

@@ -1397,7 +1397,7 @@ export default function PropertiesPanel({
                 id="input-project-duration"
                 type="number"
                 min="5"
-                max="600"
+                max="360000"
                 step="1"
                 value={project.duration}
                 onChange={(e) => {
@@ -1411,7 +1411,11 @@ export default function PropertiesPanel({
                       }
                     });
                   });
-                  onUpdateProject({ ...project, duration: Math.max(val, Math.ceil(maxClipEnd)) });
+                  onUpdateProject({
+                    ...project,
+                    userDuration: val,
+                    duration: Math.max(val, Math.ceil(maxClipEnd))
+                  } as any);
                 }}
                 className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
               />
