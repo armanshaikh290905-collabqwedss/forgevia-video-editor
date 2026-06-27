@@ -254,6 +254,13 @@ export default function PreviewPlayer({
     };
   }, []);
 
+  const currentTimeRef = useRef<number>(currentTime);
+  currentTimeRef.current = currentTime;
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+  onTimeUpdateRef.current = onTimeUpdate;
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
   // Sync state transitions of Play/Pause
   useEffect(() => {
     if (isPlaying) {
@@ -264,13 +271,13 @@ export default function PreviewPlayer({
         const delta = (now - lastTimeRef.current) / 1000;
         lastTimeRef.current = now;
 
-        const nextTime = currentTime + delta;
-        if (nextTime >= project.duration) {
-          onTimeUpdate(0);
+        const nextTime = currentTimeRef.current + delta;
+        if (nextTime >= projectRef.current.duration) {
+          onTimeUpdateRef.current(0);
           onPlayPause(false);
           syncAudioAndVideo(0, false);
         } else {
-          onTimeUpdate(nextTime);
+          onTimeUpdateRef.current(nextTime);
           syncAudioAndVideo(nextTime, true);
           animationFrameRef.current = requestAnimationFrame(tick);
         }
@@ -281,7 +288,7 @@ export default function PreviewPlayer({
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      syncAudioAndVideo(currentTime, false);
+      syncAudioAndVideo(currentTimeRef.current, false);
     }
 
     return () => {
@@ -289,7 +296,7 @@ export default function PreviewPlayer({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying, currentTime]);
+  }, [isPlaying]);
 
   // Force re-render of canvas frame when scrubber or selection changes
   useEffect(() => {

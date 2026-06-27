@@ -237,7 +237,6 @@ export default function PropertiesPanel({
                   type="number"
                   step="0.1"
                   min="0"
-                  max={project.duration - 0.1}
                   value={Number(selectedClip.start.toFixed(1))}
                   onChange={(e) => handlePropChange('start', Math.max(0, parseFloat(e.target.value) || 0))}
                   className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
@@ -251,7 +250,6 @@ export default function PropertiesPanel({
                   type="number"
                   step="0.1"
                   min="0.1"
-                  max={project.duration}
                   value={Number(selectedClip.duration.toFixed(1))}
                   onChange={(e) => handlePropChange('duration', Math.max(0.1, parseFloat(e.target.value) || 0.1))}
                   className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
@@ -1287,17 +1285,32 @@ export default function PropertiesPanel({
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider">Timeline Duration</label>
-              <select
-                id="select-project-duration"
+              <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider flex justify-between">
+                <span>Timeline Duration (s)</span>
+                <span className="text-[9px] text-[#00C4D0] normal-case font-normal">Auto-expands to fit clips</span>
+              </label>
+              <input
+                id="input-project-duration"
+                type="number"
+                min="5"
+                max="600"
+                step="1"
                 value={project.duration}
-                onChange={(e) => onUpdateProject({ ...project, duration: parseInt(e.target.value) })}
-                className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-              >
-                <option value="15">15 Seconds (Short/TikTok)</option>
-                <option value="30">30 Seconds (Standard Intro)</option>
-                <option value="60">60 Seconds (Full Promo Trailer)</option>
-              </select>
+                onChange={(e) => {
+                  const val = Math.max(5, parseInt(e.target.value) || 5);
+                  let maxClipEnd = 0;
+                  project.tracks.forEach(track => {
+                    track.clips.forEach(clip => {
+                      const end = clip.start + clip.duration;
+                      if (end > maxClipEnd) {
+                        maxClipEnd = end;
+                      }
+                    });
+                  });
+                  onUpdateProject({ ...project, duration: Math.max(val, Math.ceil(maxClipEnd)) });
+                }}
+                className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+              />
             </div>
 
             <div className="bg-[#0F0F10] p-2.5 rounded-lg border border-[#2A2A2D] text-[10px] font-mono text-slate-500 leading-relaxed">

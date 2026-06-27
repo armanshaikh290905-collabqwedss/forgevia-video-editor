@@ -7,3 +7,28 @@
   --font-display: "Space Grotesk", sans-serif;
   --font-serif: "Playfair Display", serif;
 }
+
+/* Custom Sleek Dark-Mode Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0B0C;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #242427;
+  border-radius: 4px;
+  border: 1.5px solid #0B0B0C;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #38383C;
+}
+
+::-webkit-scrollbar-corner {
+  background: #0B0B0C;
+}

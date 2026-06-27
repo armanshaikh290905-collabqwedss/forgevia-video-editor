@@ -187,6 +187,8 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [selectedClip, setSelectedClip] = useState<Clip | null>(null);
+  const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
+  const [copiedClips, setCopiedClips] = useState<Array<{ clip: Clip; originalTrackType: string }>>([]);
 
   // VividCut-style layout states
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
@@ -249,6 +251,21 @@ export default function App() {
   };
 
   const updateProjectState = (newProj: VideoProject, recordHistory = true) => {
+    // Automatically expand project duration to accommodate the end of the last clip
+    let maxClipEnd = 0;
+    newProj.tracks.forEach(t => {
+      t.clips.forEach(c => {
+        const end = c.start + c.duration;
+        if (end > maxClipEnd) {
+          maxClipEnd = end;
+        }
+      });
+    });
+
+    if (maxClipEnd > newProj.duration) {
+      newProj.duration = Math.ceil(maxClipEnd);
+    }
+
     setProject(newProj);
     if (recordHistory) {
       saveToHistory(newProj);
@@ -261,6 +278,13 @@ export default function App() {
         if (c) found = c;
       });
       setSelectedClip(found);
+    }
+
+    // Sync multi-selected clip IDs
+    if (selectedClipIds.length > 0) {
+      const allClipIds = new Set<string>();
+      newProj.tracks.forEach(t => t.clips.forEach(c => allClipIds.add(c.id)));
+      setSelectedClipIds(prev => prev.filter(id => allClipIds.has(id)));
     }
   };
 
@@ -453,6 +477,177 @@ export default function App() {
     handleUpdateTrackClips(trackId, updatedClips);
     setSelectedClip(clipB); // Maintain active selection on second half
   };
+
+  // Delete all selected clips
+  const handleDeleteSelectedClips = () => {
+    const idsToDelete = selectedClipIds.length > 0 
+      ? selectedClipIds 
+      : (selectedClip ? [selectedClip.id] : []);
+
+    if (idsToDelete.length === 0) return;
+
+    const updatedTracks = project.tracks.map(t => {
+      const remainingClips = t.clips.filter(c => !idsToDelete.includes(c.id));
+      return { ...t, clips: remainingClips };
+    });
+
+    setSelectedClipIds([]);
+    setSelectedClip(null);
+
+    // Update state and record history
+    updateProjectState({ ...project, tracks: updatedTracks });
+  };
+
+  // Copy selected clips to custom state clipboard
+  const handleCopyClips = () => {
+    const idsToCopy = selectedClipIds.length > 0 
+      ? selectedClipIds 
+      : (selectedClip ? [selectedClip.id] : []);
+
+    if (idsToCopy.length === 0) return;
+
+    const copied: Array<{ clip: Clip; originalTrackType: string }> = [];
+    project.tracks.forEach(track => {
+      track.clips.forEach(clip => {
+        if (idsToCopy.includes(clip.id)) {
+          copied.push({
+            clip: JSON.parse(JSON.stringify(clip)),
+            originalTrackType: track.type
+          });
+        }
+      });
+    });
+
+    setCopiedClips(copied);
+  };
+
+  // Paste copied clips from custom state clipboard
+  const handlePasteClips = () => {
+    if (copiedClips.length === 0) return;
+
+    const minCopiedStart = Math.min(...copiedClips.map(cc => cc.clip.start));
+    const newTracks = project.tracks.map(t => ({ ...t, clips: [...t.clips] }));
+    const newSelectedIds: string[] = [];
+    let lastPasted: Clip | null = null;
+
+    copiedClips.forEach(cc => {
+      const relativeOffset = cc.clip.start - minCopiedStart;
+      const targetStart = currentTime + relativeOffset;
+
+      const pastedClip: Clip = {
+        ...JSON.parse(JSON.stringify(cc.clip)),
+        id: 'clip-' + Math.random().toString(36).substr(2, 9),
+        start: targetStart
+      };
+
+      const targetTrack = newTracks.find(t => t.type === cc.originalTrackType);
+      if (targetTrack) {
+        targetTrack.clips.push(pastedClip);
+        newSelectedIds.push(pastedClip.id);
+        lastPasted = pastedClip;
+      }
+    });
+
+    newTracks.forEach(t => {
+      t.clips.sort((a, b) => a.start - b.start);
+    });
+
+    setSelectedClipIds(newSelectedIds);
+    setSelectedClip(lastPasted);
+
+    updateProjectState({ ...project, tracks: newTracks });
+  };
+
+  // Cut selected clips to custom state clipboard
+  const handleCutClips = () => {
+    const idsToCut = selectedClipIds.length > 0 
+      ? selectedClipIds 
+      : (selectedClip ? [selectedClip.id] : []);
+
+    if (idsToCut.length === 0) return;
+
+    // Copy phase
+    const copied: Array<{ clip: Clip; originalTrackType: string }> = [];
+    project.tracks.forEach(track => {
+      track.clips.forEach(clip => {
+        if (idsToCut.includes(clip.id)) {
+          copied.push({
+            clip: JSON.parse(JSON.stringify(clip)),
+            originalTrackType: track.type
+          });
+        }
+      });
+    });
+    setCopiedClips(copied);
+
+    // Delete phase
+    const updatedTracks = project.tracks.map(t => {
+      const remainingClips = t.clips.filter(c => !idsToCut.includes(c.id));
+      return { ...t, clips: remainingClips };
+    });
+
+    setSelectedClipIds([]);
+    setSelectedClip(null);
+    updateProjectState({ ...project, tracks: updatedTracks });
+  };
+
+  // Bind global professional keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.getAttribute('contenteditable') === 'true')) {
+        return;
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        setIsPlaying(prev => !prev);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        handleDeleteSelectedClips();
+      } else if (isCtrl && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        handleCopyClips();
+      } else if (isCtrl && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault();
+        handlePasteClips();
+      } else if (isCtrl && (e.key === 'x' || e.key === 'X')) {
+        e.preventDefault();
+        handleCutClips();
+      } else if (isCtrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        handleRedo();
+      } else if (isCtrl && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        handleUndo();
+      } else if (isCtrl && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const step = e.shiftKey ? 1.0 : 0.1;
+        setCurrentTime(prev => Math.max(0, prev - step));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const step = e.shiftKey ? 1.0 : 0.1;
+        setCurrentTime(prev => Math.min(project.duration, prev + step));
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        setCurrentTime(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        setCurrentTime(project.duration);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedClipIds, selectedClip, copiedClips, project, historyPointer, history, isPlaying, currentTime]);
 
   // Delete individual clip
   const handleDeleteClip = (trackId: string, clipId: string) => {
@@ -1186,11 +1381,20 @@ export default function App() {
         onTimeUpdate={setCurrentTime}
         selectedClip={selectedClip}
         onSelectClip={setSelectedClip}
+        selectedClipIds={selectedClipIds}
+        onSelectClips={(ids, primary) => {
+          setSelectedClipIds(ids);
+          setSelectedClip(primary);
+        }}
+        onDeleteSelectedClips={handleDeleteSelectedClips}
+        onCopyClips={handleCopyClips}
+        onPasteClips={handlePasteClips}
         onUpdateTrackClips={handleUpdateTrackClips}
         onSplitClip={handleSplitClip}
         onDeleteClip={handleDeleteClip}
         onAddClipToTrack={handleAddClipToTrack}
         onToggleMuteTrack={handleToggleMuteTrack}
+        onUpdateProject={updateProjectState}
         canUndo={historyPointer > 0}
         canRedo={historyPointer < history.length - 1}
         onUndo={handleUndo}
