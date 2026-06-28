@@ -374,7 +374,9 @@ export default function Timeline({
   // Calculate dynamic workspace duration (ensures blank workspace of at least 5 minutes, extending dynamically as we scroll)
   const viewportWidthForWorkspace = tracksContainerRef.current ? tracksContainerRef.current.clientWidth : 800;
   const visibleEndTime = (scrollLeftState + viewportWidthForWorkspace) / zoom;
-  let workspaceDuration = Math.max(activeDuration + 300, visibleEndTime + 120);
+  const viewportDuration = viewportWidthForWorkspace / zoom;
+  // Always keep at least 5 minutes of empty space after the last clip, and at least one viewport width of empty overscroll beyond the visible window
+  let workspaceDuration = Math.max(activeDuration + 300, visibleEndTime + viewportDuration);
 
   // Keep projectDurationRef synced so zoom constraints stay correct
   projectDurationRef.current = workspaceDuration;
@@ -2626,8 +2628,8 @@ export default function Timeline({
           <input
             id="timeline-zoom-slider"
             type="range"
-            min={Math.max(0.01, tracksContainerRef.current ? (tracksContainerRef.current.clientWidth - 80) / project.duration : 0.1)}
-            max={500}
+            min={getZoomLimits().minZoom}
+            max={getZoomLimits().maxZoom}
             step={0.01}
             value={zoom}
             onChange={(e) => triggerZoomTo(Number(e.target.value))}
@@ -2674,7 +2676,7 @@ export default function Timeline({
             const rect = tracksContainerRef.current.getBoundingClientRect();
             const scrollLeft = tracksContainerRef.current.scrollLeft;
             const mouseX = e.clientX - rect.left + scrollLeft - 80;
-            const hoverTime = Math.max(0, Math.min(project.duration, mouseX / zoom));
+            const hoverTime = Math.max(0, Math.min(workspaceDuration, mouseX / zoom));
             setHoverRulerTime(hoverTime);
           }}
           onMouseLeave={() => {

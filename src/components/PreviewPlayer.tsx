@@ -349,7 +349,9 @@ export default function PreviewPlayer({
         lastTimeRef.current = now;
 
         const nextTime = currentTimeRef.current + delta;
-        if (nextTime >= projectRef.current.duration) {
+        // Support playing past the last clip into the dynamic empty workspace, allowing projects up to multiple hours
+        const playbackEndLimit = Math.max(projectRef.current.duration + 3600, 14400);
+        if (nextTime >= playbackEndLimit) {
           onTimeUpdateRef.current(0);
           onPlayPause(false);
           syncAudioAndVideo(0, false);
@@ -1349,7 +1351,9 @@ export default function PreviewPlayer({
               <button
                 id="btn-player-next-frame"
                 onClick={() => {
-                  const next = Math.min(project.duration, currentTime + 1 / project.fps);
+                  // Relax clamp to allow step forward into empty overscroll workspace
+                  const maxLimit = Math.max(project.duration + 3600, 14400);
+                  const next = Math.min(maxLimit, currentTime + 1 / project.fps);
                   onTimeUpdate(next);
                   syncAudioAndVideo(next, isPlaying);
                 }}

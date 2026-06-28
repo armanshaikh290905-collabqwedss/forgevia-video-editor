@@ -1164,7 +1164,9 @@ export default function App() {
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         const step = e.shiftKey ? 1.0 : 0.1;
-        setCurrentTime(prev => Math.min(project.duration, prev + step));
+        // Support scrolling and key scrubbing into the empty overscroll workspace
+        const maxLimit = Math.max(project.duration + 3600, 14400);
+        setCurrentTime(prev => Math.min(maxLimit, prev + step));
       } else if (e.key === 'Home') {
         e.preventDefault();
         setCurrentTime(0);
