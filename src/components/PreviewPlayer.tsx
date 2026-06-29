@@ -747,7 +747,7 @@ export default function PreviewPlayer({
 
     // 2. Render Background to Foreground Track Video/Image Layers
     project.tracks.forEach(track => {
-      if (track.muted || track.type === 'audio') return;
+      if (track.hidden || track.muted || track.type === 'audio') return;
 
       const sortedClips = [...track.clips].sort((a, b) => a.start - b.start);
       const clipsRenderedInTransition = new Set<string>();
@@ -875,7 +875,7 @@ export default function PreviewPlayer({
 
     // 3. Render Overlaid Subtitles/Text Layers
     project.tracks.forEach(track => {
-      if (track.muted || track.type !== 'text') return;
+      if (track.hidden || track.muted || track.type !== 'text') return;
 
       track.clips.forEach(clip => {
         if (time >= clip.start && time < clip.start + clip.duration) {
@@ -1076,7 +1076,7 @@ export default function PreviewPlayer({
         // 1. Gather all active videos and wait for them to seek to the frame position
         const activeVideoClips: { video: HTMLVideoElement; targetTime: number }[] = [];
         project.tracks.forEach(track => {
-          if (track.muted || track.type === 'audio') return;
+          if (track.hidden || track.muted || track.type === 'audio') return;
           track.clips.forEach(clip => {
             if (seekTime >= clip.start && seekTime < clip.start + clip.duration) {
               if (clip.type === 'video') {

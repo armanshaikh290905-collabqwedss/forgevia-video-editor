@@ -24,7 +24,8 @@ import {
   Settings,
   Maximize,
   MoreHorizontal,
-  ChevronDown
+  ChevronDown,
+  Diamond
 } from 'lucide-react';
 import { VideoProject, TimelineTrack, Clip, MediaType, VideoClip, ImageClip, AudioClip, TextClip } from '../types';
 
@@ -194,6 +195,30 @@ export default function Timeline({
     currentX: number;
     currentY: number;
   } | null>(null);
+
+  // Collapsed tracks state
+  const [collapsedTracks, setCollapsedTracks] = useState<Record<string, boolean>>({});
+  
+  // Track renaming state
+  const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
+  const [renamingTrackName, setRenamingTrackName] = useState<string>('');
+
+  const handleRenameTrackStart = (trackId: string, name: string) => {
+    setRenamingTrackId(trackId);
+    setRenamingTrackName(name);
+  };
+
+  const handleRenameTrackSubmit = (trackId: string) => {
+    if (!renamingTrackName.trim() || !onUpdateProject) return;
+    const updatedTracks = project.tracks.map(t => {
+      if (t.id === trackId) {
+        return { ...t, name: renamingTrackName.trim() };
+      }
+      return t;
+    });
+    onUpdateProject({ ...project, tracks: updatedTracks });
+    setRenamingTrackId(null);
+  };
 
   // Individual track heights state & helpers
   const [trackHeights, setTrackHeights] = useState<Record<string, number>>(() => {
@@ -392,6 +417,18 @@ export default function Timeline({
     const updatedTracks = project.tracks.map(t => {
       if (t.id === trackId) {
         return { ...t, locked: !t.locked };
+      }
+      return t;
+    });
+    onUpdateProject({ ...project, tracks: updatedTracks });
+  };
+
+  // Toggle track hiding status helper
+  const handleToggleHideTrack = (trackId: string) => {
+    if (!onUpdateProject) return;
+    const updatedTracks = project.tracks.map(t => {
+      if (t.id === trackId) {
+        return { ...t, hidden: !t.hidden };
       }
       return t;
     });
@@ -2121,6 +2158,134 @@ export default function Timeline({
     });
   };
 
+  // Professional Keyframe Helper & Handler functions
+  const getInterpolatedProps = (clip: Clip, targetTime: number) => {
+    const baseOpacity = clip.opacity ?? 1;
+    const baseScale = clip.scale ?? 1;
+    const basePositionX = clip.positionX ?? 0;
+    const basePositionY = clip.positionY !== undefined ? clip.positionY : (clip.type === 'text' ? 50 : 0);
+    const baseVolume = (clip as any).volume ?? 1;
+
+    if (!clip.keyframes || clip.keyframes.length === 0) {
+      return {
+        opacity: baseOpacity,
+        scale: baseScale,
+        positionX: basePositionX,
+        positionY: basePositionY,
+        volume: baseVolume
+      };
+    }
+
+    const sorted = [...clip.keyframes].sort((a, b) => a.time - b.time);
+
+    const getPropVal = (prop: 'opacity' | 'scale' | 'positionX' | 'positionY' | 'volume') => {
+      const fallback = prop === 'opacity' || prop === 'scale' ? 1 : (prop === 'positionY' && clip.type === 'text' ? 50 : 0);
+      const clipFallback = (clip as any)[prop] !== undefined ? (clip as any)[prop] : fallback;
+
+      const resolveVal = (kf: any) => kf[prop] !== undefined ? kf[prop] : clipFallback;
+
+      if (targetTime <= sorted[0].time) return resolveVal(sorted[0]);
+      if (targetTime >= sorted[sorted.length - 1].time) return resolveVal(sorted[sorted.length - 1]);
+
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const kf1 = sorted[i];
+        const kf2 = sorted[i + 1];
+        if (targetTime >= kf1.time && targetTime <= kf2.time) {
+          const denom = kf2.time - kf1.time;
+          const factor = denom > 0 ? (targetTime - kf1.time) / denom : 0;
+          return resolveVal(kf1) + (resolveVal(kf2) - resolveVal(kf1)) * factor;
+        }
+      }
+      return clipFallback;
+    };
+
+    return {
+      opacity: getPropVal('opacity'),
+      scale: getPropVal('scale'),
+      positionX: getPropVal('positionX'),
+      positionY: getPropVal('positionY'),
+      volume: getPropVal('volume')
+    };
+  };
+
+  const handleToggleKeyframeAtPlayhead = () => {
+    if (!selectedClip) return;
+    const track = project.tracks.find(t => t.clips.some(c => c.id === selectedClip.id));
+    if (!track) return;
+
+    const clipTime = currentTime - selectedClip.start;
+    const targetTime = Math.max(0, Math.min(selectedClip.duration, clipTime));
+
+    const currentKfs = selectedClip.keyframes ? [...selectedClip.keyframes] : [];
+    const existingKfIdx = currentKfs.findIndex(kf => Math.abs(kf.time - targetTime) < 0.1);
+
+    let updatedKfs: any[] = [];
+    if (existingKfIdx !== -1) {
+      // Remove keyframe
+      updatedKfs = currentKfs.filter((_, idx) => idx !== existingKfIdx);
+    } else {
+      // Add keyframe
+      const interp = getInterpolatedProps(selectedClip, targetTime);
+      const newKf: any = {
+        id: 'kf-' + Math.random().toString(36).substring(2, 9),
+        time: targetTime,
+      };
+
+      if (selectedClip.type === 'audio') {
+        newKf.volume = interp.volume;
+      } else {
+        newKf.opacity = interp.opacity;
+        newKf.scale = interp.scale;
+        newKf.positionX = interp.positionX;
+        newKf.positionY = interp.positionY;
+      }
+
+      updatedKfs = [...currentKfs, newKf].sort((a, b) => a.time - b.time);
+    }
+
+    const updatedClips = track.clips.map(c => {
+      if (c.id === selectedClip.id) {
+        return { ...c, keyframes: updatedKfs };
+      }
+      return c;
+    });
+
+    onUpdateTrackClips(track.id, updatedClips);
+
+    const updatedSelectedClip = updatedClips.find(c => c.id === selectedClip.id);
+    if (updatedSelectedClip) {
+      onSelectClip(updatedSelectedClip);
+    }
+  };
+
+  const handleGoToPrevKeyframe = () => {
+    if (!selectedClip || !selectedClip.keyframes || selectedClip.keyframes.length === 0) return;
+    
+    const clipTime = currentTime - selectedClip.start;
+    const sorted = [...selectedClip.keyframes].sort((a, b) => a.time - b.time);
+    
+    const prevKf = [...sorted].reverse().find(kf => kf.time < clipTime - 0.05);
+    
+    if (prevKf) {
+      const targetTimelineTime = selectedClip.start + prevKf.time;
+      onTimeUpdate(Math.max(0, targetTimelineTime));
+    }
+  };
+
+  const handleGoToNextKeyframe = () => {
+    if (!selectedClip || !selectedClip.keyframes || selectedClip.keyframes.length === 0) return;
+    
+    const clipTime = currentTime - selectedClip.start;
+    const sorted = [...selectedClip.keyframes].sort((a, b) => a.time - b.time);
+    
+    const nextKf = sorted.find(kf => kf.time > clipTime + 0.05);
+    
+    if (nextKf) {
+      const targetTimelineTime = selectedClip.start + nextKf.time;
+      onTimeUpdate(Math.max(0, targetTimelineTime));
+    }
+  };
+
   // Visual offsets
   const totalTimelineWidth = workspaceDuration * zoom;
 
@@ -2257,6 +2422,8 @@ export default function Timeline({
     isSelected: boolean,
     isDragging: boolean
   ) => {
+    const isCollapsed = collapsedTracks[track.id];
+
     // Style colors based on clip type with premium gradients, glow states and border effects
     const colorStyles = track.locked
       ? {
@@ -2306,7 +2473,9 @@ export default function Timeline({
         key={clip.id}
         onMouseDown={isDragging || isTrimmingThis || track.locked ? undefined : (e) => handleClipMouseDown(e, track.id, clip)}
         onContextMenu={(e) => handleClipContextMenu(e, track, clip)}
-        className={`absolute top-2 bottom-2 border rounded-md px-2 flex flex-col justify-center overflow-hidden select-none ${colorStyles} ${dragStyles} ${transitionClass} ${
+        className={`absolute border flex flex-col justify-center overflow-hidden select-none ${colorStyles} ${dragStyles} ${transitionClass} ${
+          isCollapsed ? 'top-[3px] bottom-[3px] rounded-sm px-1.5' : 'top-2 bottom-2 rounded-md px-2'
+        } ${
           isHoveredByFx ? 'border-yellow-400 border-2 scale-[1.02] ring-4 ring-yellow-400/30 z-20' : ''
         }`}
         style={{ 
@@ -2322,7 +2491,7 @@ export default function Timeline({
         )}
 
         {/* Selected corners handle indicator overlay */}
-        {isSelected && !track.locked && (
+        {isSelected && !track.locked && !isCollapsed && (
           <>
             <div className="absolute inset-0 border-[2px] border-white rounded-md pointer-events-none z-30 shadow-[inset_0_0_12px_rgba(255,255,255,0.35)]" />
             <div className="absolute top-[-2px] left-[-2px] w-2 h-2 bg-white rounded-sm border border-slate-950 pointer-events-none z-30 shadow" />
@@ -2340,20 +2509,20 @@ export default function Timeline({
           </div>
         )}
         {/* Left Trim Handle - Sleek glowing handle bar */}
-        {!anyDragOrTrimActive && !track.locked && (
+        {!isCollapsed && !anyDragOrTrimActive && !track.locked && (
           <div 
             onMouseDown={(e) => handleLeftTrimMouseDown(e, track.id, clip)}
-            className="absolute left-0 top-0 bottom-0 w-2.5 hover:w-3.5 hover:bg-amber-500 bg-black/20 border-r border-white/5 hover:border-amber-400/30 cursor-ew-resize transition-all z-20 flex items-center justify-center group"
+            className="absolute left-0 top-0 bottom-0 w-3.5 hover:w-4.5 hover:bg-amber-500 bg-white/10 border-r border-white/20 hover:border-amber-400 cursor-ew-resize transition-all z-20 flex items-center justify-center group"
             title="Drag left edge to trim start"
           >
-            <div className="w-[1.5px] h-4 bg-white/40 group-hover:bg-slate-950 rounded-full transition-colors" />
+            <div className="w-[2px] h-4 bg-white/60 group-hover:bg-slate-950 rounded-full transition-colors animate-pulse" />
           </div>
         )}
 
         {/* Highlight Active Left Handle while Trimming */}
         {isTrimmingThis && trimState.edge === 'left' && (
           <div 
-            className="absolute left-0 top-0 bottom-0 w-2.5 bg-amber-500 border-r border-[#1e1e21] cursor-ew-resize z-20 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+            className="absolute left-0 top-0 bottom-0 w-3 bg-amber-500 border-r border-[#1e1e21] cursor-ew-resize z-20 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
           />
         )}
 
@@ -2384,28 +2553,30 @@ export default function Timeline({
         )}
 
         {/* Clip label */}
-        <div className="flex flex-col text-[10px] pl-1 font-semibold leading-tight select-none pointer-events-none truncate z-0">
+        <div className={`flex flex-col font-semibold leading-tight select-none pointer-events-none truncate z-0 ${isCollapsed ? 'text-[9px] pl-0' : 'text-[10px] pl-1'}`}>
           <span className="truncate">{clip.name}</span>
-          <span className="text-[8px] opacity-75 font-mono truncate">
-            {renderStart.toFixed(1)}s - {(renderStart + clip.duration).toFixed(1)}s
-          </span>
+          {!isCollapsed && (
+            <span className="text-[8px] opacity-75 font-mono truncate">
+              {renderStart.toFixed(1)}s - {(renderStart + clip.duration).toFixed(1)}s
+            </span>
+          )}
         </div>
 
         {/* Right Trim Handle - Sleek glowing handle bar */}
-        {!anyDragOrTrimActive && !track.locked && (
+        {!isCollapsed && !anyDragOrTrimActive && !track.locked && (
           <div 
             onMouseDown={(e) => handleRightTrimMouseDown(e, track.id, clip)}
-            className="absolute right-0 top-0 bottom-0 w-2.5 hover:w-3.5 hover:bg-amber-500 bg-black/20 border-l border-white/5 hover:border-amber-400/30 cursor-ew-resize transition-all z-20 flex items-center justify-center group"
+            className="absolute right-0 top-0 bottom-0 w-3.5 hover:w-4.5 hover:bg-amber-500 bg-white/10 border-l border-white/20 hover:border-amber-400 cursor-ew-resize transition-all z-20 flex items-center justify-center group"
             title="Drag right edge to trim end"
           >
-            <div className="w-[1.5px] h-4 bg-white/40 group-hover:bg-slate-950 rounded-full transition-colors" />
+            <div className="w-[2px] h-4 bg-white/60 group-hover:bg-slate-950 rounded-full transition-colors animate-pulse" />
           </div>
         )}
 
         {/* Highlight Active Right Handle while Trimming */}
         {isTrimmingThis && trimState.edge === 'right' && (
           <div 
-            className="absolute right-0 top-0 bottom-0 w-2.5 bg-amber-500 border-l border-black/30 cursor-ew-resize z-20 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+            className="absolute right-0 top-0 bottom-0 w-3 bg-amber-500 border-l border-black/30 cursor-ew-resize z-20 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
           />
         )}
 
@@ -2483,6 +2654,18 @@ export default function Timeline({
       </div>
     );
   };
+
+  const hasActiveKeyframe = selectedClip
+    ? selectedClip.keyframes?.some(kf => Math.abs(kf.time - (currentTime - selectedClip.start)) < 0.1)
+    : false;
+
+  const hasPrevKeyframe = selectedClip && selectedClip.keyframes && selectedClip.keyframes.length > 0
+    ? selectedClip.keyframes.some(kf => kf.time < (currentTime - selectedClip.start) - 0.05)
+    : false;
+
+  const hasNextKeyframe = selectedClip && selectedClip.keyframes && selectedClip.keyframes.length > 0
+    ? selectedClip.keyframes.some(kf => kf.time > (currentTime - selectedClip.start) + 0.05)
+    : false;
 
   return (
     <div 
@@ -2587,6 +2770,49 @@ export default function Timeline({
           >
             <Trash2 size={18} />
           </button>
+
+          {/* Professional Keyframe Controls */}
+          {selectedClip && (
+            <>
+              <div className="w-px h-5 bg-[#2A2A2D]/60 mx-1" />
+              <div className="flex items-center gap-1">
+                {selectedClip.keyframes && selectedClip.keyframes.length > 0 && (
+                  <button
+                    id="btn-timeline-prev-keyframe"
+                    onClick={handleGoToPrevKeyframe}
+                    className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2A2A2D]/80 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded transition-all cursor-pointer"
+                    title="Previous Keyframe"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                )}
+
+                <button
+                  id="btn-timeline-toggle-keyframe"
+                  onClick={handleToggleKeyframeAtPlayhead}
+                  className={`w-8 h-8 flex items-center justify-center border rounded transition-all cursor-pointer ${
+                    hasActiveKeyframe
+                      ? 'bg-amber-950/60 border-amber-500/80 hover:border-amber-400 hover:bg-amber-900/60 text-amber-400'
+                      : 'bg-[#161618] border-[#2A2A2D]/80 hover:border-slate-500 text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={hasActiveKeyframe ? "Remove Keyframe" : "Add Keyframe"}
+                >
+                  <Diamond size={15} className={hasActiveKeyframe ? "fill-amber-400 text-amber-400" : ""} />
+                </button>
+
+                {selectedClip.keyframes && selectedClip.keyframes.length > 0 && (
+                  <button
+                    id="btn-timeline-next-keyframe"
+                    onClick={handleGoToNextKeyframe}
+                    className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2A2A2D]/80 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded transition-all cursor-pointer"
+                    title="Next Keyframe"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           <div className="w-px h-5 bg-[#2A2A2D]/60 mx-1" />
 
@@ -2789,7 +3015,7 @@ export default function Timeline({
           }}
         >
           {/* Label Spacer */}
-          <div className="sticky left-0 top-0 bottom-0 w-16 bg-gradient-to-b from-[#1c1c1e] to-[#121214] border-r border-[#2A2A2D] flex items-center justify-center text-[9px] font-bold text-slate-300 uppercase tracking-wider z-30 shadow-[4px_0_12px_rgba(0,0,0,0.5)]">
+          <div className="sticky left-0 top-0 bottom-0 w-20 bg-gradient-to-b from-[#1c1c1e] to-[#121214] border-r border-[#2A2A2D] flex items-center justify-center text-[9px] font-bold text-slate-300 uppercase tracking-wider z-30 shadow-[4px_0_12px_rgba(0,0,0,0.5)]">
             Ruler
           </div>
 
@@ -2883,10 +3109,9 @@ export default function Timeline({
                 <span>{(snapLineTime !== null ? snapLineTime : (externalDrag ? externalDrag.snappedTime : 0)).toFixed(2)}s</span>
               </div>
             </div>
-          )}
-
-          {project.tracks.map((track) => {
-            const trackHeight = trackHeights[track.id] || 64;
+          )}          {project.tracks.map((track) => {
+            const isCollapsed = collapsedTracks[track.id];
+            const trackHeight = isCollapsed ? 32 : (trackHeights[track.id] || 64);
             return (
               <div 
                 key={track.id} 
@@ -2929,35 +3154,92 @@ export default function Timeline({
               }}
             >
               {/* Track Info sidebar label */}
-              <div className="sticky left-0 top-0 bottom-0 w-16 bg-gradient-to-b from-[#18181a] to-[#0f0f10] border-r border-[#2A2A2D] flex flex-col justify-center px-1.5 py-1 shrink-0 z-30 select-none shadow-[4px_0_12px_rgba(0,0,0,0.5)] h-full">
-                <span className="text-[10px] font-bold text-slate-300 truncate tracking-wide block capitalize">{track.name}</span>
-                
-                {/* Track controls */}
-                <div className="flex items-center gap-1 mt-1 opacity-60 group-hover:opacity-100 transition-opacity">
+              <div 
+                className="sticky left-0 top-0 bottom-0 w-20 bg-[#141416] border-r border-[#2A2A2D] flex flex-col justify-between px-1.5 py-1.5 shrink-0 z-30 select-none shadow-[4px_0_12px_rgba(0,0,0,0.5)] h-full overflow-hidden"
+              >
+                <div className="flex items-center gap-1 w-full overflow-hidden">
+                  {/* Collapse chevron */}
                   <button
-                    onClick={() => onToggleMuteTrack(track.id)}
-                    className="p-0.5 hover:bg-[#232326] rounded text-slate-500 hover:text-red-400 cursor-pointer"
-                    title={track.muted ? 'Unmute Track' : 'Mute Track'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCollapsedTracks(prev => ({ ...prev, [track.id]: !prev[track.id] }));
+                    }}
+                    className="p-0.5 hover:bg-[#232326] rounded text-slate-400 hover:text-slate-100 cursor-pointer"
+                    title={isCollapsed ? "Expand Track" : "Collapse Track"}
                   >
-                    {track.muted ? <VolumeX size={10} className="text-red-500" /> : <Volume2 size={10} />}
+                    {isCollapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
                   </button>
 
-                  <button
-                    onClick={() => handleToggleLockTrack(track.id)}
-                    className="p-0.5 hover:bg-[#232326] rounded text-slate-500 hover:text-amber-500 cursor-pointer ml-0.5"
-                    title={track.locked ? 'Unlock Track' : 'Lock Track'}
-                  >
-                    {track.locked ? <Lock size={10} className="text-amber-500" /> : <Unlock size={10} />}
-                  </button>
-
-                  <button
-                    onClick={() => onAddClipToTrack(track.id, track.type)}
-                    className="p-0.5 hover:bg-[#232326] rounded text-slate-500 hover:text-indigo-400 cursor-pointer ml-auto"
-                    title="Add dummy blank clip here"
-                  >
-                    <Plus size={10} />
-                  </button>
+                  {renamingTrackId === track.id ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      value={renamingTrackName}
+                      onChange={(e) => setRenamingTrackName(e.target.value)}
+                      onBlur={() => handleRenameTrackSubmit(track.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenameTrackSubmit(track.id);
+                        if (e.key === 'Escape') setRenamingTrackId(null);
+                      }}
+                      className="bg-[#111112] text-[10px] text-white px-1 py-0.5 border border-indigo-500 rounded outline-none w-12"
+                    />
+                  ) : (
+                    <span 
+                      onDoubleClick={() => handleRenameTrackStart(track.id, track.name)}
+                      className="text-[10px] font-bold text-slate-300 truncate tracking-wide block cursor-pointer select-none"
+                      title="Double-click to rename track"
+                    >
+                      {track.name}
+                    </span>
+                  )}
                 </div>
+
+                {/* Track controls - grid pattern to look extremely technical and dense */}
+                {!isCollapsed && (
+                  <div className="grid grid-cols-4 gap-1 mt-1 w-full opacity-60 group-hover/track:opacity-100 transition-opacity">
+                    {/* Hide toggle */}
+                    <button
+                      onClick={() => handleToggleHideTrack(track.id)}
+                      className={`p-0.5 hover:bg-[#232326] rounded cursor-pointer flex items-center justify-center ${
+                        track.hidden ? 'text-[#38BDF8]' : 'text-slate-500 hover:text-[#38BDF8]'
+                      }`}
+                      title={track.hidden ? 'Show Track Visuals' : 'Hide Track Visuals'}
+                    >
+                      {track.hidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                    </button>
+
+                    {/* Mute toggle */}
+                    <button
+                      onClick={() => onToggleMuteTrack(track.id)}
+                      className={`p-0.5 hover:bg-[#232326] rounded cursor-pointer flex items-center justify-center ${
+                        track.muted ? 'text-[#EF4444]' : 'text-slate-500 hover:text-[#EF4444]'
+                      }`}
+                      title={track.muted ? 'Unmute Track Audio' : 'Mute Track Audio'}
+                    >
+                      {track.muted ? <VolumeX size={10} /> : <Volume2 size={10} />}
+                    </button>
+
+                    {/* Lock toggle */}
+                    <button
+                      onClick={() => handleToggleLockTrack(track.id)}
+                      className={`p-0.5 hover:bg-[#232326] rounded cursor-pointer flex items-center justify-center ${
+                        track.locked ? 'text-[#F59E0B]' : 'text-slate-500 hover:text-[#F59E0B]'
+                      }`}
+                      title={track.locked ? 'Unlock Track' : 'Lock Track'}
+                    >
+                      {track.locked ? <Lock size={10} /> : <Unlock size={10} />}
+                    </button>
+
+                    {/* Plus toggle */}
+                    <button
+                      onClick={() => onAddClipToTrack(track.id, track.type)}
+                      className="p-0.5 hover:bg-[#232326] rounded text-slate-500 hover:text-[#818CF8] cursor-pointer flex items-center justify-center"
+                      title="Add dummy blank clip here"
+                    >
+                      <Plus size={10} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Lane Content clips zone */}

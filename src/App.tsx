@@ -40,7 +40,7 @@ import PropertiesPanel from './components/PropertiesPanel';
 const createInitialProject = (): VideoProject => {
   const videoTrack: TimelineTrack = {
     id: 'track_video_1',
-    name: 'Video Background',
+    name: '🎬 Video',
     type: 'video',
     clips: [
       {
@@ -101,7 +101,7 @@ const createInitialProject = (): VideoProject => {
 
   const textTrack: TimelineTrack = {
     id: 'track_text_1',
-    name: 'Overlay Text',
+    name: '📝 Text',
     type: 'text',
     clips: [
       {
@@ -145,7 +145,7 @@ const createInitialProject = (): VideoProject => {
 
   const audioTrack: TimelineTrack = {
     id: 'track_audio_1',
-    name: 'Soundtrack',
+    name: '🎵 Audio',
     type: 'audio',
     clips: [
       {
@@ -168,7 +168,7 @@ const createInitialProject = (): VideoProject => {
 
   const overlayTrack: TimelineTrack = {
     id: 'track_overlay_1',
-    name: 'Overlay Track',
+    name: '✨ Effects',
     type: 'text',
     clips: [
       {
@@ -1359,7 +1359,7 @@ export default function App() {
     const updatedTracks: TimelineTrack[] = [
       {
         id: 'track_video_1',
-        name: 'Video Background',
+        name: '🎬 Video',
         type: 'video',
         clips: videoClips,
         muted: false,
@@ -1367,7 +1367,7 @@ export default function App() {
       },
       {
         id: 'track_overlay_1',
-        name: 'Overlay Track',
+        name: '✨ Effects',
         type: 'text',
         clips: [],
         muted: false,
@@ -1375,7 +1375,7 @@ export default function App() {
       },
       {
         id: 'track_text_1',
-        name: 'Overlay Text',
+        name: '📝 Text',
         type: 'text',
         clips: textClips,
         muted: false,
@@ -1383,7 +1383,7 @@ export default function App() {
       },
       {
         id: 'track_audio_1',
-        name: 'Soundtrack',
+        name: '🎵 Audio',
         type: 'audio',
         clips: audioClips,
         muted: false,
