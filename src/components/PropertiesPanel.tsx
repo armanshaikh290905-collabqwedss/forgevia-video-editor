@@ -139,6 +139,9 @@ export default function PropertiesPanel({
   // Update properties helper
   const handlePropChange = (field: string, value: any) => {
     if (!selectedClip) return;
+    if (field === 'speed') {
+      console.log('[PropertiesPanel] Speed onChange selected value:', value, 'type:', typeof value);
+    }
     onUpdateClip({
       ...selectedClip,
       [field]: value
@@ -916,7 +919,7 @@ export default function PropertiesPanel({
               <div className="flex flex-col gap-1.5">
                 <label className="text-[8px] text-slate-500 block font-bold uppercase">Playback Multiplier</label>
                 <select
-                  value={(selectedClip as VideoClip).speed || 1.0}
+                  value={Number((selectedClip as VideoClip).speed ?? 1.0).toFixed(1)}
                   onChange={(e) => handlePropChange('speed', parseFloat(e.target.value))}
                   className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
                 >
@@ -1535,7 +1538,7 @@ export default function PropertiesPanel({
               <div className="flex flex-col gap-1.5">
                 <label className="text-[8px] text-slate-500 font-bold uppercase block">Audio Frequency Rate</label>
                 <select
-                  value={(selectedClip as any).speed || 1.0}
+                  value={Number((selectedClip as any).speed ?? 1.0).toFixed(1)}
                   onChange={(e) => handlePropChange('speed', parseFloat(e.target.value))}
                   className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs"
                 >

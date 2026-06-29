@@ -426,12 +426,18 @@ export default function PreviewPlayer({
             // Native audio playback sync
             const cachedAudio = getOrLoadAudio(audioClip.url);
             if (cachedAudio) {
-              const offset = timelineTime - clip.start + clip.sourceOffset;
+              const speedMultiplier = audioClip.speed || 1.0;
+              const offset = (timelineTime - clip.start) * speedMultiplier + clip.sourceOffset;
               cachedAudio.volume = currentVolume;
+              
+              if (cachedAudio.playbackRate !== speedMultiplier) {
+                cachedAudio.playbackRate = speedMultiplier;
+              }
+
               if (cachedAudio.paused) {
                 cachedAudio.currentTime = offset;
                 cachedAudio.play().catch(() => {});
-              } else if (Math.abs(cachedAudio.currentTime - offset) > 0.3) {
+              } else if (Math.abs(cachedAudio.currentTime - offset) * speedMultiplier > 0.3) {
                 cachedAudio.currentTime = offset;
               }
             }
@@ -446,12 +452,18 @@ export default function PreviewPlayer({
           if (videoClip.url && videoClip.url !== 'procedural') {
             const cachedVideo = getOrLoadVideo(videoClip.url);
             if (cachedVideo) {
-              const offset = timelineTime - clip.start + clip.sourceOffset;
+              const speedMultiplier = videoClip.speed || 1.0;
+              const offset = (timelineTime - clip.start) * speedMultiplier + clip.sourceOffset;
               cachedVideo.volume = isMuted ? 0 : currentVolume;
+
+              if (cachedVideo.playbackRate !== speedMultiplier) {
+                cachedVideo.playbackRate = speedMultiplier;
+              }
+
               if (cachedVideo.paused) {
                 cachedVideo.currentTime = offset;
                 cachedVideo.play().catch(() => {});
-              } else if (Math.abs(cachedVideo.currentTime - offset) > 0.3) {
+              } else if (Math.abs(cachedVideo.currentTime - offset) * speedMultiplier > 0.3) {
                 cachedVideo.currentTime = offset;
               }
             }
@@ -570,6 +582,10 @@ export default function PreviewPlayer({
           const video = getOrLoadVideo(vClip.url);
           if (video && video.readyState >= 2) {
             const videoTime = relativeTime * vClip.speed;
+            const targetSpeed = vClip.speed || 1.0;
+            if (video.playbackRate !== targetSpeed) {
+              video.playbackRate = targetSpeed;
+            }
             if (Math.abs(video.currentTime - videoTime) > 0.1) {
               video.currentTime = videoTime;
             }
