@@ -157,8 +157,8 @@ export default function MediaLibrary({
   const isWide = libraryWidth >= 420;
 
   // Responsive grid column counts
-  const cols2 = isCompact ? 'grid-cols-1' : (libraryWidth >= 550 ? 'grid-cols-4' : (libraryWidth >= 400 ? 'grid-cols-3' : 'grid-cols-2'));
-  const colsStickers = isCompact ? 'grid-cols-2' : (libraryWidth >= 550 ? 'grid-cols-6' : (libraryWidth >= 400 ? 'grid-cols-5' : 'grid-cols-4'));
+  const cols2 = isCompact ? 'grid-cols-1' : (libraryWidth >= 480 ? 'grid-cols-4' : (libraryWidth >= 310 ? 'grid-cols-3' : 'grid-cols-2'));
+  const colsStickers = isCompact ? 'grid-cols-2' : (libraryWidth >= 480 ? 'grid-cols-6' : (libraryWidth >= 310 ? 'grid-cols-5' : 'grid-cols-4'));
 
   // VividCut-style Navigation Tabs
   const [activeCategory, setActiveCategory] = useState<'media' | 'audio' | 'text' | 'stickers' | 'effects' | 'transitions' | 'filters' | 'adjust'>('media');
@@ -779,18 +779,18 @@ export default function MediaLibrary({
         </div>
 
         {/* Right Main Content Block */}
-        <div className="flex-1 p-3 overflow-y-auto bg-[#16161a] flex flex-col gap-3">
+        <div className="flex-1 p-1.5 overflow-y-auto bg-[#16161a] flex flex-col gap-2">
           
           {/* CATEGORY: MEDIA */}
           {activeCategory === 'media' && (
             <>
               {mediaSubTab === 'local' ? (
-                <div className="flex flex-col gap-3 h-full">
+                <div className="flex flex-col gap-2 h-full">
                   {/* Local drag drop zone */}
-                  <label className="border border-dashed border-[#28282e] hover:border-[#3d3d46] rounded-lg p-3.5 flex flex-col items-center justify-center text-center cursor-pointer bg-[#121214] transition-all group">
-                    <Upload size={20} className="text-[#00C4D0] mb-1.5 group-hover:scale-110 transition-transform" />
-                    <span className="text-[11px] text-slate-200 font-bold">Import Material</span>
-                    <span className="text-[9px] text-slate-500 mt-0.5">Drag files or click here</span>
+                  <label className="border border-dashed border-[#28282e]/60 hover:border-[#3d3d46] rounded-md p-2 flex flex-col items-center justify-center text-center cursor-pointer bg-[#121214] transition-all group shrink-0">
+                    <Upload size={16} className="text-[#00C4D0] mb-1 group-hover:scale-105 transition-transform" />
+                    <span className="text-[10px] text-slate-200 font-bold">Import Material</span>
+                    <span className="text-[8px] text-slate-500">Drag files or click</span>
                     <input
                       id="vividcut-uploader-input"
                       type="file"
@@ -803,16 +803,12 @@ export default function MediaLibrary({
 
                   {/* List Local Uploaded Assets */}
                   <div className="flex-1">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Local Materials ({assets.length})</span>
-                    </div>
-
                     {assets.length === 0 ? (
                       <div className="text-center py-10 text-slate-600 text-xs font-medium">
                         Shelf is currently empty.<br />Upload media clips to populate!
                       </div>
                     ) : (
-                      <div className={`grid ${isCompact ? 'grid-cols-1' : cols2} gap-2 max-h-[280px] md:max-h-none overflow-y-auto pr-0.5`}>
+                      <div className={`grid ${isCompact ? 'grid-cols-1' : cols2} gap-1.5 max-h-[280px] md:max-h-none overflow-y-auto pr-0.5`}>
                         {assets.map((asset) => {
                           const isHovered = hoveredAssetId === asset.id;
                           const isPlayingAudio = activeHoverAudioId === asset.id;
@@ -834,8 +830,8 @@ export default function MediaLibrary({
                                   setActiveHoverAudioId(null);
                                 }
                               }}
-                              className={`bg-[#121214] rounded-lg border border-[#28282e] p-1.5 flex ${
-                                isCompact ? 'flex-row items-center gap-2.5' : 'flex-col'
+                              className={`bg-[#121214] rounded-md border border-[#28282e] p-1 flex ${
+                                isCompact ? 'flex-row items-center gap-1.5' : 'flex-col'
                               } group hover:border-[#00C4D0]/60 hover:bg-[#18181c] transition-all cursor-grab active:cursor-grabbing relative`}
                             >
                               {/* Visual Preview Container */}
@@ -1075,15 +1071,8 @@ export default function MediaLibrary({
           {activeCategory === 'audio' && (
             <>
               {audioSubTab === 'synth' ? (
-                <div className="flex flex-col gap-2.5">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Procedural Music Synthesizer</span>
-                  {!isCompact && (
-                    <p className="text-[10px] text-slate-500 leading-normal">
-                      Generates high-fidelity loop beats using synthesized oscillator oscillators and frequency gains inside the AudioCtx.
-                    </p>
-                  )}
-
-                  <div className="flex flex-col gap-2.5 mt-2">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2">
                     {[
                       { type: 'lofi', label: 'Lo-Fi Jazz Beat', desc: 'Chill beats with synth electric piano chords', colorClass: 'bg-emerald-500/70', color: '#10b981' },
                       { type: 'techno', label: 'Techno Acid Loop', desc: 'Sizzling acid basslines and 4/4 kicks', colorClass: 'bg-purple-500/70', color: '#a855f7' },
@@ -1217,15 +1206,8 @@ export default function MediaLibrary({
           {activeCategory === 'text' && (
             <>
               {textSubTab === 'template' ? (
-                <div className="flex flex-col gap-2.5">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Custom Text Presets</span>
-                  {!isCompact && (
-                    <p className="text-[10px] text-slate-500 leading-normal">
-                      Drag or click a preset style to overlay responsive typography.
-                    </p>
-                  )}
-
-                  <div className={`grid ${cols2} gap-2 mt-1`}>
+                <div className="flex flex-col gap-2">
+                  <div className={`grid ${cols2} gap-2 mt-0`}>
                     {[
                       {
                         id: 'text_minimal',
@@ -1604,8 +1586,7 @@ export default function MediaLibrary({
 
           {/* CATEGORY: EFFECTS */}
           {activeCategory === 'effects' && (
-            <div className="flex flex-col gap-2.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Creative Lens Effects</span>
+            <div className="flex flex-col gap-2">
               
               {!selectedClip ? (
                 <div className="text-center py-10 text-slate-600 text-xs font-medium">
@@ -1732,8 +1713,7 @@ export default function MediaLibrary({
 
           {/* CATEGORY: TRANSITIONS */}
           {activeCategory === 'transitions' && (
-            <div className="flex flex-col gap-2.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Track Cross-Clip Transitions</span>
+            <div className="flex flex-col gap-2">
               
               {!selectedClip ? (
                 <div className="text-center py-10 text-slate-600 text-xs font-medium">
@@ -1919,8 +1899,7 @@ export default function MediaLibrary({
 
           {/* CATEGORY: FILTERS */}
           {activeCategory === 'filters' && (
-            <div className="flex flex-col gap-2.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Visual LUT Presets</span>
+            <div className="flex flex-col gap-2">
               
               {!selectedClip ? (
                 <div className="text-center py-10 text-slate-600 text-xs font-medium">
@@ -1974,8 +1953,7 @@ export default function MediaLibrary({
 
           {/* CATEGORY: ADJUST */}
           {activeCategory === 'adjust' && (
-            <div className="flex flex-col gap-2.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Precision Color LUT Adjustments</span>
+            <div className="flex flex-col gap-2">
               
               {!selectedClip ? (
                 <div className="text-center py-10 text-slate-600 text-xs font-medium">

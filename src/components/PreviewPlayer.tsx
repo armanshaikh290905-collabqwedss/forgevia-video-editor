@@ -239,8 +239,8 @@ export default function PreviewPlayer({
 
   // Compute size boundaries for perfect fit-to-window or custom sizing
   const aspectRatio = project.width / project.height;
-  const paddingX = 48; // horizontal safe padding
-  const paddingY = 160; // vertical offset for toolbar, control bar, margins
+  const paddingX = 16; // horizontal safe padding
+  const paddingY = 90; // vertical offset for toolbar, control bar, margins
   const maxFitWidth = Math.max(200, containerSize.width - paddingX);
   const maxFitHeight = Math.max(150, containerSize.height - paddingY);
   const fitWidth = Math.min(maxFitWidth, maxFitHeight * aspectRatio);
@@ -1150,41 +1150,21 @@ export default function PreviewPlayer({
       style={style}
     >
       {/* Dynamic Monitor Control Toolbar */}
-      <div className="px-4 py-2.5 bg-[#121214] border-b border-[#2A2A2D] flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between shrink-0">
+      <div className="px-3 py-1 bg-[#121214] border-b border-[#2A2A2D]/40 flex items-center justify-between shrink-0 h-8">
         <div className="flex items-center gap-2">
-          <Film size={13} className="text-indigo-400 animate-pulse" />
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-200">
-            Monitor Preview
+          <Film size={12} className="text-indigo-400" />
+          <span className="text-[9.5px] font-extrabold uppercase tracking-widest text-slate-200">
+            Preview
           </span>
-          <span className="text-[9px] text-slate-500 font-mono bg-slate-900/40 border border-[#2A2A2D] px-1.5 py-0.5 rounded">
-            {project.width}x{project.height} @ {project.fps}fps
+          <span className="text-[9px] text-slate-400 font-mono bg-slate-950/60 px-1.5 py-0.5 rounded border border-[#2A2A2D]/30">
+            {project.width}x{project.height} @ {project.fps}FPS
           </span>
         </div>
 
-        {/* Resize Controls */}
-        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
-          {/* Zoom Slider */}
+        {/* Integrated Sizing Controls */}
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
-            <ZoomOut size={12} className="text-slate-500" />
-            <input
-              id="slider-preview-zoom"
-              type="range"
-              min="240"
-              max={Math.max(1200, containerSize.width)}
-              step="10"
-              value={activeWidth}
-              onChange={(e) => {
-                setPreviewMode('custom');
-                setCustomWidth(parseInt(e.target.value, 10));
-              }}
-              className="w-20 sm:w-28 accent-indigo-500 h-1 rounded bg-[#161618] border border-[#2A2A2D] cursor-ew-resize"
-              title="Drag to scale preview dynamically"
-            />
-            <ZoomIn size={12} className="text-slate-500" />
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Quick Sizing Selector */}
+            <span className="text-[9.5px] text-slate-500 font-semibold">Scale:</span>
             <select
               id="select-preview-scale"
               value={previewMode === 'fit' ? 'fit' : customWidth}
@@ -1197,35 +1177,35 @@ export default function PreviewPlayer({
                   setCustomWidth(parseInt(val, 10));
                 }
               }}
-              className="bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-[10px] text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
+              className="bg-[#161618] border border-[#2A2A2D]/60 hover:border-slate-500 rounded px-1.5 py-0.5 text-[9.5px] text-slate-300 font-semibold focus:outline-none transition-colors cursor-pointer"
             >
-              <option value="fit">Fit Window ({Math.round((activeWidth / fitWidth) * 100)}%)</option>
-              <option value="320">320px (Compact)</option>
-              <option value="480">480px (Standard)</option>
-              <option value="640">640px (Medium)</option>
-              <option value="800">800px (Large)</option>
-              <option value="1000">1000px (Cinema)</option>
+              <option value="fit">Fit ({Math.round((activeWidth / fitWidth) * 100)}%)</option>
+              <option value="320">320px</option>
+              <option value="480">480px</option>
+              <option value="640">640px</option>
+              <option value="800">800px</option>
+              <option value="1000">1000px</option>
             </select>
-
-            {/* Fit-to-Window Toggle */}
-            <button
-              id="btn-preview-fit"
-              onClick={() => setPreviewMode(previewMode === 'fit' ? 'custom' : 'fit')}
-              className={`p-1 rounded border transition-all ${
-                previewMode === 'fit'
-                  ? 'border-indigo-500 bg-indigo-950/40 text-indigo-400'
-                  : 'border-[#2A2A2D] bg-[#161618] text-slate-400 hover:text-slate-200 hover:border-[#35353A]'
-              }`}
-              title="Toggle Fit to Window"
-            >
-              <Maximize2 size={12} />
-            </button>
           </div>
+
+          {/* Fit-to-Window Toggle */}
+          <button
+            id="btn-preview-fit"
+            onClick={() => setPreviewMode(previewMode === 'fit' ? 'custom' : 'fit')}
+            className={`p-1 rounded border transition-all cursor-pointer ${
+              previewMode === 'fit'
+                ? 'border-indigo-500/50 bg-indigo-950/40 text-indigo-400'
+                : 'border-[#2A2A2D]/60 bg-[#161618] text-slate-400 hover:text-slate-200 hover:border-slate-500'
+            }`}
+            title="Toggle Fit to Window"
+          >
+            <Maximize2 size={11} />
+          </button>
         </div>
       </div>
 
       {/* Main Preview Work Area with dynamic overflow panning */}
-      <div className="flex-1 flex items-center justify-center p-4 overflow-auto scrollbar-thin scrollbar-thumb-[#2A2A2D] scrollbar-track-transparent">
+      <div className="flex-1 flex items-center justify-center p-2 overflow-auto scrollbar-thin scrollbar-thumb-[#2A2A2D]/40 scrollbar-track-transparent">
         
         {/* Resizable Player Wrapper */}
         <div 
@@ -1301,7 +1281,7 @@ export default function PreviewPlayer({
           </div>
 
           {/* Control Rail Panel */}
-          <div className="w-full mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-[#161618] px-4 py-3 rounded-lg border border-[#2A2A2D] shadow-lg shrink-0">
+          <div className="w-full mt-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 bg-[#161618] px-3 py-2 rounded-lg border border-[#2A2A2D]/60 shadow-lg shrink-0">
             {/* Timestamp */}
             <div className="flex items-center gap-2 shrink-0 justify-center">
               <span className="text-xs font-mono font-bold text-indigo-400 bg-[#0F0F10] px-2.5 py-1 rounded border border-[#2A2A2D]">

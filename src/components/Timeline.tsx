@@ -22,7 +22,9 @@ import {
   ArrowUp,
   ArrowDown,
   Settings,
-  Maximize
+  Maximize,
+  MoreHorizontal,
+  ChevronDown
 } from 'lucide-react';
 import { VideoProject, TimelineTrack, Clip, MediaType, VideoClip, ImageClip, AudioClip, TextClip } from '../types';
 
@@ -306,6 +308,9 @@ export default function Timeline({
 
   // Ripple editing state
   const [rippleEnabled, setRippleEnabled] = useState<boolean>(true);
+
+  // Advanced dropdown menu state
+  const [advancedMenuOpen, setAdvancedMenuOpen] = useState<boolean>(false);
 
   // Dragging state for volume envelope keyframes
   const [activeKfDrag, setActiveKfDrag] = useState<{
@@ -820,9 +825,28 @@ export default function Timeline({
   // Zoom bounds helper
   const getZoomLimits = () => {
     const viewportWidth = tracksContainerRef.current ? tracksContainerRef.current.clientWidth - 80 : 800;
-    const minZoom = Math.max(0.01, viewportWidth / projectDurationRef.current);
+    // Base minZoom on active clips duration + 5 minutes of padding so the entire active workspace is fully visible when zoomed out
+    const minZoom = Math.max(0.005, viewportWidth / (activeDuration + 300));
     const maxZoom = 500;
     return { minZoom, maxZoom };
+  };
+
+  // Logarithmic slider helpers to map linear [0, 100] values to logarithmic zoom levels
+  const getSliderValue = (currentZoom: number) => {
+    const { minZoom, maxZoom } = getZoomLimits();
+    const lMin = Math.log(minZoom);
+    const lMax = Math.log(maxZoom);
+    if (Math.abs(lMax - lMin) < 0.0001) return 50;
+    const pct = (Math.log(currentZoom) - lMin) / (lMax - lMin);
+    return Math.max(0, Math.min(100, pct * 100));
+  };
+
+  const getZoomFromSlider = (val: number) => {
+    const { minZoom, maxZoom } = getZoomLimits();
+    const lMin = Math.log(minZoom);
+    const lMax = Math.log(maxZoom);
+    const pct = val / 100;
+    return Math.exp(lMin + pct * (lMax - lMin));
   };
 
   // Keep scrolling/zoom anchored precisely before painting to eliminate visual jumping/bouncing
@@ -860,7 +884,7 @@ export default function Timeline({
         setZoom(finalZoom);
         animFrameRef.current = null;
       } else {
-        const step = diff * 0.18; // smooth exponential spring lerping
+        const step = diff * 0.14; // smoother, premium exponential spring lerping
         const nextZoom = currentZoom + step;
         zoomRef.current = nextZoom;
         setZoom(nextZoom);
@@ -910,57 +934,69 @@ export default function Timeline({
     const scrollLeft = tracksContainerRef.current.scrollLeft;
     const viewportWidth = rect.width - 80;
 
-    const isShift = e.shiftKey;
-    const isHorizontalScroll = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    // Zooming is ONLY triggered if Ctrl key (or trackpad pinch-to-zoom), Alt key, or Cmd/Meta key is pressed.
+    // This prevents accidental zooming while scrolling normally.
+    const isZoom = e.ctrlKey || e.altKey || e.metaKey;
 
-    if (isShift || isHorizontalScroll) {
+    if (isZoom) {
       e.preventDefault();
-      const delta = isHorizontalScroll ? e.deltaX : e.deltaY;
-      tracksContainerRef.current.scrollLeft += delta;
-      setScrollLeftState(tracksContainerRef.current.scrollLeft);
-      return;
-    }
 
-    // Zooming (triggered by standard scrolling, Alt + Scroll, or trackpad pinch gesture with ctrlKey)
-    e.preventDefault();
+      const { minZoom, maxZoom } = getZoomLimits();
 
-    const { minZoom, maxZoom } = getZoomLimits();
+      // Anchor to mouse if within valid lanes zone, otherwise playhead or center
+      let anchorTime = 0;
+      let anchorX = 0;
 
-    // Anchor to mouse if within valid lanes zone, otherwise playhead or center
-    let anchorTime = 0;
-    let anchorX = 0;
-
-    if (mouseXInTimeline >= 0 && mouseXInTimeline <= viewportWidth) {
-      // Calculate anchorTime dynamically using zoomRef.current so ongoing zoom transitions don't drift
-      anchorTime = (scrollLeft + mouseXInTimeline) / zoomRef.current;
-      anchorX = mouseXInTimeline;
-    } else {
-      const playheadX = currentTimeRef.current * zoomRef.current - scrollLeft;
-      if (playheadX >= 0 && playheadX <= viewportWidth) {
-        anchorTime = currentTimeRef.current;
-        anchorX = playheadX;
+      if (mouseXInTimeline >= 0 && mouseXInTimeline <= viewportWidth) {
+        // Calculate anchorTime dynamically using zoomRef.current so ongoing zoom transitions don't drift
+        anchorTime = (scrollLeft + mouseXInTimeline) / zoomRef.current;
+        anchorX = mouseXInTimeline;
       } else {
-        anchorTime = (scrollLeft + viewportWidth / 2) / zoomRef.current;
-        anchorX = viewportWidth / 2;
+        const playheadX = currentTimeRef.current * zoomRef.current - scrollLeft;
+        if (playheadX >= 0 && playheadX <= viewportWidth) {
+          anchorTime = currentTimeRef.current;
+          anchorX = playheadX;
+        } else {
+          anchorTime = (scrollLeft + viewportWidth / 2) / zoomRef.current;
+          anchorX = viewportWidth / 2;
+        }
       }
-    }
 
-    zoomAnchorTimeRef.current = anchorTime;
-    zoomAnchorMouseXRef.current = anchorX;
+      zoomAnchorTimeRef.current = anchorTime;
+      zoomAnchorMouseXRef.current = anchorX;
 
-    // Detect trackpad pinch-zoom (ctrlKey is true for trackpad pinch gestures on standard browsers)
-    const isPinch = e.ctrlKey;
-    const zoomFactor = isPinch ? 1.05 : 1.15;
-    
-    let nextTargetZoom = targetZoomRef.current;
-    if (e.deltaY < 0) {
-      nextTargetZoom = Math.min(maxZoom, targetZoomRef.current * zoomFactor);
+      // Trackpad pinch-zoom uses a very high frequency of small events, while normal mouse wheels are clicky.
+      // We reduce standard wheel zoom step size to 5–10% (e.g. 1.06 factor) for extreme fine control.
+      const isPinch = e.ctrlKey && Math.abs(e.deltaY) < 10; // Pinch gestures have smaller, faster deltaY
+      const zoomFactor = isPinch ? 1.03 : 1.06;
+      
+      let nextTargetZoom = targetZoomRef.current;
+      if (e.deltaY < 0) {
+        nextTargetZoom = Math.min(maxZoom, targetZoomRef.current * zoomFactor);
+      } else {
+        nextTargetZoom = Math.max(minZoom, targetZoomRef.current / zoomFactor);
+      }
+
+      targetZoomRef.current = nextTargetZoom;
+      startZoomAnimationLoop();
     } else {
-      nextTargetZoom = Math.max(minZoom, targetZoomRef.current / zoomFactor);
+      // Normal mouse wheel or Shift + Mouse wheel -> Horizontally scroll the timeline (matches Premiere/DaVinci)
+      e.preventDefault();
+      
+      const deltaX = e.deltaX;
+      const deltaY = e.deltaY;
+      
+      // Map vertical scrolling (deltaY) to horizontal movement if horizontal delta is small/absent
+      let scrollDelta = 0;
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        scrollDelta = deltaX;
+      } else {
+        scrollDelta = deltaY;
+      }
+      
+      tracksContainerRef.current.scrollLeft += scrollDelta;
+      setScrollLeftState(tracksContainerRef.current.scrollLeft);
     }
-
-    targetZoomRef.current = nextTargetZoom;
-    startZoomAnimationLoop();
   };
 
   // Attach native non-passive wheel event listener specifically to outer timeline
@@ -2508,27 +2544,27 @@ export default function Timeline({
         }
       `}</style>
       {/* Timeline Controls / Split / Delete actions */}
-      <div className="flex items-center justify-between border-b border-[#2A2A2D] px-4 py-2 shrink-0 bg-[#0F0F10]">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between border-b border-[#2A2A2D]/80 px-4 py-1 shrink-0 bg-[#0F0F10] h-10 select-none">
+        <div className="flex items-center gap-1.5">
           {/* VividCut-style Timeline Undo/Redo buttons */}
-          <div className="flex items-center gap-1 border-r border-[#2A2A2D] pr-2.5 mr-1">
+          <div className="flex items-center gap-1 pr-2 mr-0.5 border-r border-[#2A2A2D]/60">
             <button
               id="btn-timeline-undo"
               disabled={!canUndo}
               onClick={onUndo}
-              className="p-1.5 bg-[#161618] border border-[#2d2d34] hover:border-[#3d3d46] disabled:opacity-35 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2d2d34]/60 hover:border-slate-500 disabled:opacity-25 rounded text-slate-300 hover:text-white transition-all cursor-pointer"
               title="Undo edit (Ctrl+Z)"
             >
-              <Undo2 size={13} />
+              <Undo2 size={16} />
             </button>
             <button
               id="btn-timeline-redo"
               disabled={!canRedo}
               onClick={onRedo}
-              className="p-1.5 bg-[#161618] border border-[#2d2d34] hover:border-[#3d3d46] disabled:opacity-35 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2d2d34]/60 hover:border-slate-500 disabled:opacity-25 rounded text-slate-300 hover:text-white transition-all cursor-pointer"
               title="Redo edit (Ctrl+Y)"
             >
-              <Redo2 size={13} />
+              <Redo2 size={16} />
             </button>
           </div>
 
@@ -2536,72 +2572,133 @@ export default function Timeline({
             id="btn-split-selected-clip"
             disabled={!selectedClip}
             onClick={handleTriggerSplit}
-            className="px-3 py-1.5 bg-[#161618] border border-[#2A2A2D] hover:border-[#35353A] hover:bg-[#232326] disabled:opacity-30 text-xs font-semibold text-indigo-400 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Split selected clip at current playhead position"
+            className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2A2A2D]/80 hover:border-slate-500 disabled:opacity-25 text-indigo-400 hover:text-indigo-300 rounded transition-all cursor-pointer"
+            title="Split selected clip at current playhead position (S)"
           >
-            <Scissors size={13} />
-            Split Clip
+            <Scissors size={18} />
           </button>
 
           <button
             id="btn-delete-selected-clip"
             disabled={activeSelectedIds.length === 0}
             onClick={handleTriggerDelete}
-            className="px-3 py-1.5 bg-[#161618] border border-[#2A2A2D] hover:border-[#35353A] hover:bg-[#232326] disabled:opacity-30 text-xs font-semibold text-red-400 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Delete active clip"
+            className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2A2A2D]/80 hover:border-slate-500 disabled:opacity-25 text-red-400 hover:text-red-300 rounded transition-all cursor-pointer"
+            title="Delete active clip (Delete/Backspace)"
           >
-            <Trash2 size={13} />
-            Delete
+            <Trash2 size={18} />
           </button>
+
+          <div className="w-px h-5 bg-[#2A2A2D]/60 mx-1" />
 
           <button
             id="btn-copy-selected-clips"
             disabled={activeSelectedIds.length === 0}
             onClick={onCopyClips}
-            className="px-3 py-1.5 bg-[#161618] border border-[#2A2A2D] hover:border-[#35353A] hover:bg-[#232326] disabled:opacity-30 text-xs font-semibold text-amber-400 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2A2A2D]/80 hover:border-slate-500 disabled:opacity-25 text-amber-400 hover:text-amber-300 rounded transition-all cursor-pointer"
             title="Copy selected clips (Ctrl+C)"
           >
-            <Copy size={13} />
-            Copy
+            <Copy size={18} />
           </button>
 
           <button
             id="btn-paste-selected-clips"
             onClick={onPasteClips}
-            className="px-3 py-1.5 bg-[#161618] border border-[#2A2A2D] hover:border-[#35353A] hover:bg-[#232326] text-xs font-semibold text-emerald-400 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2A2A2D]/80 hover:border-slate-500 text-emerald-400 hover:text-emerald-300 rounded transition-all cursor-pointer"
             title="Paste copied clips at playhead (Ctrl+V)"
           >
-            <Clipboard size={13} />
-            Paste
+            <Clipboard size={18} />
           </button>
+
+          <div className="w-px h-5 bg-[#2A2A2D]/60 mx-1" />
 
           <button
             id="btn-toggle-magnetic-snapping"
             onClick={() => setMagnetEnabled(prev => !prev)}
-            className={`px-3 py-1.5 border rounded flex items-center gap-1.5 transition-colors cursor-pointer text-xs font-semibold ${
+            className={`w-8 h-8 flex items-center justify-center border rounded transition-all cursor-pointer ${
               magnetEnabled 
-                ? 'bg-cyan-950/40 border-cyan-800/80 hover:border-cyan-700 hover:bg-cyan-950/60 text-cyan-400' 
-                : 'bg-[#161618] border-[#2A2A2D] hover:border-[#35353A] text-slate-400 hover:text-slate-300'
+                ? 'bg-cyan-950/60 border-cyan-500/80 hover:border-cyan-400 hover:bg-cyan-900/60 text-cyan-400' 
+                : 'bg-[#161618] border-[#2A2A2D]/80 hover:border-slate-500 text-slate-400 hover:text-slate-200'
             }`}
-            title={magnetEnabled ? "Magnetic Snapping: Enabled (Click to disable)" : "Magnetic Snapping: Disabled (Click to enable)"}
+            title={magnetEnabled ? "Magnetic Snapping: Enabled (N)" : "Magnetic Snapping: Disabled (N)"}
           >
-            <Magnet size={13} className={magnetEnabled ? "animate-pulse text-cyan-400" : "text-slate-400"} />
-            Snapping
+            <Magnet size={18} className={magnetEnabled ? "animate-pulse" : ""} />
           </button>
 
           <button
             id="btn-toggle-ripple-editing"
             onClick={() => setRippleEnabled(prev => !prev)}
-            className={`px-3 py-1.5 border rounded flex items-center gap-1.5 transition-colors cursor-pointer text-xs font-semibold ${
+            className={`w-8 h-8 flex items-center justify-center border rounded transition-all cursor-pointer ${
               rippleEnabled 
-                ? 'bg-amber-950/40 border-amber-800/80 hover:border-amber-700 hover:bg-amber-950/60 text-amber-400' 
-                : 'bg-[#161618] border-[#2A2A2D] hover:border-[#35353A] text-slate-400 hover:text-slate-300'
+                ? 'bg-amber-950/60 border-amber-500/80 hover:border-amber-400 hover:bg-amber-900/60 text-amber-400' 
+                : 'bg-[#161618] border-[#2A2A2D]/80 hover:border-slate-500 text-slate-400 hover:text-slate-200'
             }`}
-            title={rippleEnabled ? "Ripple Editing: Enabled (Click to disable)" : "Ripple Editing: Disabled (Click to enable)"}
+            title={rippleEnabled ? "Ripple Editing: Enabled (R)" : "Ripple Editing: Disabled (R)"}
           >
-            <RefreshCw size={13} className={rippleEnabled ? "animate-spin text-amber-400" : "text-slate-400"} style={{ animationDuration: rippleEnabled ? '8s' : '0s' }} />
-            Ripple
+            <RefreshCw size={17} className={rippleEnabled ? "animate-spin" : ""} style={{ animationDuration: '10s' }} />
           </button>
+
+          {/* More Actions Dropdown */}
+          <div className="relative">
+            {advancedMenuOpen && (
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setAdvancedMenuOpen(false)} 
+              />
+            )}
+            <button
+              id="btn-timeline-advanced-options"
+              onClick={() => setAdvancedMenuOpen(prev => !prev)}
+              className={`w-8 h-8 flex items-center justify-center bg-[#161618] border border-[#2A2A2D]/80 hover:border-slate-500 text-slate-300 rounded transition-all cursor-pointer z-50 relative ${advancedMenuOpen ? 'border-indigo-500/80 bg-indigo-950/20 text-indigo-400' : ''}`}
+              title="Advanced Actions"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+
+            {advancedMenuOpen && (
+              <div className="absolute left-0 mt-1.5 w-48 bg-[#141416] border border-[#2A2A2D] rounded shadow-2xl py-1 z-50 animate-fadeIn">
+                <button
+                  id="btn-advanced-copy"
+                  disabled={activeSelectedIds.length === 0}
+                  onClick={() => {
+                    onCopyClips();
+                    setAdvancedMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-slate-300 hover:text-white hover:bg-[#2A2A2D] disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                >
+                  <Copy size={13} className="text-amber-400" />
+                  <span>Copy Clips (Ctrl+C)</span>
+                </button>
+
+                <button
+                  id="btn-advanced-paste"
+                  onClick={() => {
+                    onPasteClips();
+                    setAdvancedMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-slate-300 hover:text-white hover:bg-[#2A2A2D] transition-colors cursor-pointer"
+                >
+                  <Clipboard size={13} className="text-emerald-400" />
+                  <span>Paste Clips (Ctrl+V)</span>
+                </button>
+
+                <div className="h-px bg-[#2A2A2D] my-1" />
+
+                <button
+                  id="btn-advanced-ripple"
+                  onClick={() => {
+                    setRippleEnabled(prev => !prev);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs text-left text-slate-300 hover:text-white hover:bg-[#2A2A2D] transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <RefreshCw size={13} className={`text-amber-400 ${rippleEnabled ? 'animate-spin' : ''}`} style={{ animationDuration: '8s' }} />
+                    <span>Ripple Editing</span>
+                  </span>
+                  {rippleEnabled && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Volume Automation Help / Glowing Tip Banner */}
@@ -2611,42 +2708,50 @@ export default function Timeline({
         </div>
 
         {/* Horizontal Time-Scale (Zoom) Slider */}
-        <div className="flex items-center gap-3 bg-[#161618] px-3 py-1 rounded-md border border-[#2A2A2D]">
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">
-            Time Scale
+        <div className="flex items-center gap-2 bg-[#161618] px-2 py-0.5 rounded border border-[#2A2A2D]/60 h-8">
+          <span className="text-[9.5px] text-slate-400 font-bold uppercase tracking-wider hidden md:inline pl-1">
+            Zoom
           </span>
           
           <button 
             id="btn-timeline-zoom-out"
             onClick={() => triggerZoomTo(zoomRef.current / 1.35)}
             className="p-1 hover:bg-[#232326] text-slate-400 hover:text-slate-200 rounded cursor-pointer transition-colors"
-            title="Decrease Horizontal Zoom"
+            title="Decrease Zoom"
           >
-            <ZoomOut size={13} />
+            <ZoomOut size={12} />
           </button>
           
           <input
             id="timeline-zoom-slider"
             type="range"
-            min={getZoomLimits().minZoom}
-            max={getZoomLimits().maxZoom}
-            step={0.01}
-            value={zoom}
-            onChange={(e) => triggerZoomTo(Number(e.target.value))}
-            className="w-28 sm:w-36 accent-indigo-500 h-1 bg-[#2A2A2D] rounded-full cursor-ew-resize focus:outline-none"
-            title="Adjust horizontal scale"
+            min={0}
+            max={100}
+            step={0.1}
+            value={getSliderValue(zoom)}
+            onChange={(e) => triggerZoomTo(getZoomFromSlider(Number(e.target.value)))}
+            onDoubleClick={() => {
+              const { minZoom } = getZoomLimits();
+              const defaultZoom = Math.max(minZoom, 10);
+              triggerZoomTo(defaultZoom);
+            }}
+            className="w-20 sm:w-28 accent-indigo-500 h-1 bg-[#2A2A2D] rounded-full cursor-ew-resize focus:outline-none"
+            title="Adjust horizontal scale (Double-click to reset)"
           />
 
           <button 
             id="btn-timeline-zoom-in"
             onClick={() => triggerZoomTo(zoomRef.current * 1.35)}
             className="p-1 hover:bg-[#232326] text-slate-400 hover:text-slate-200 rounded cursor-pointer transition-colors"
-            title="Increase Horizontal Zoom"
+            title="Increase Zoom"
           >
-            <ZoomIn size={13} />
+            <ZoomIn size={12} />
           </button>
 
-          <span className="text-[10px] text-indigo-400 font-mono font-bold bg-indigo-950/40 border border-indigo-900/40 px-1.5 py-0.5 rounded select-none min-w-[50px] text-center">
+          <span 
+            className="text-[10px] text-indigo-400 font-mono font-bold bg-indigo-950/40 border border-indigo-900/40 px-1.5 py-0.5 rounded select-none min-w-[50px] text-center cursor-pointer hover:bg-indigo-950/60 transition-colors"
+            title="Current zoom level. Double-click slider to reset to default."
+          >
             {zoom < 1 ? zoom.toFixed(2) : Math.round(zoom)} px/s
           </span>
         </div>
@@ -2684,7 +2789,7 @@ export default function Timeline({
           }}
         >
           {/* Label Spacer */}
-          <div className="sticky left-0 top-0 bottom-0 w-20 bg-gradient-to-b from-[#1c1c1e] to-[#121214] border-r border-[#2A2A2D] flex items-center justify-center text-[9px] font-bold text-slate-300 uppercase tracking-wider z-30 shadow-[4px_0_12px_rgba(0,0,0,0.5)]">
+          <div className="sticky left-0 top-0 bottom-0 w-16 bg-gradient-to-b from-[#1c1c1e] to-[#121214] border-r border-[#2A2A2D] flex items-center justify-center text-[9px] font-bold text-slate-300 uppercase tracking-wider z-30 shadow-[4px_0_12px_rgba(0,0,0,0.5)]">
             Ruler
           </div>
 
@@ -2824,7 +2929,7 @@ export default function Timeline({
               }}
             >
               {/* Track Info sidebar label */}
-              <div className="sticky left-0 top-0 bottom-0 w-20 bg-gradient-to-b from-[#18181a] to-[#0f0f10] border-r border-[#2A2A2D] flex flex-col justify-center px-2 py-1 shrink-0 z-30 select-none shadow-[4px_0_12px_rgba(0,0,0,0.5)] h-full">
+              <div className="sticky left-0 top-0 bottom-0 w-16 bg-gradient-to-b from-[#18181a] to-[#0f0f10] border-r border-[#2A2A2D] flex flex-col justify-center px-1.5 py-1 shrink-0 z-30 select-none shadow-[4px_0_12px_rgba(0,0,0,0.5)] h-full">
                 <span className="text-[10px] font-bold text-slate-300 truncate tracking-wide block capitalize">{track.name}</span>
                 
                 {/* Track controls */}

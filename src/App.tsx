@@ -226,8 +226,8 @@ const DEFAULT_WORKSPACES: WorkspacePreset[] = [
     id: 'editing',
     name: 'Editing (Standard)',
     leftWidth: 340,
-    rightWidth: 320,
-    bottomHeight: 280,
+    rightWidth: 440,
+    bottomHeight: 300,
     mediaVisible: true,
     propertiesVisible: true,
     timelineVisible: true,
@@ -689,13 +689,13 @@ export default function App() {
 
   // Double-click to reset dividers
   const handleLeftResizeReset = () => {
-    setLeftWidth(350);
+    setLeftWidth(Math.max(240, Math.floor(window.innerWidth * 0.19)));
   };
   const handleRightResizeReset = () => {
-    setRightWidth(320);
+    setRightWidth(Math.max(280, Math.floor(window.innerWidth * 0.25)));
   };
   const handleBottomResizeReset = () => {
-    setBottomHeight(300);
+    setBottomHeight(Math.max(200, Math.floor(window.innerHeight * 0.32)));
   };
 
   // Window resize responsive clamping
@@ -1779,7 +1779,7 @@ export default function App() {
     <div id="video-editor-app" className="bg-[#0F0F10] text-slate-100 flex flex-col h-screen overflow-hidden font-sans">
       
       {/* VividCut-style Application Ribbon Header */}
-      <header className="bg-[#18181c] border-b border-[#28282e] px-4 py-2.5 shrink-0 flex items-center justify-between shadow z-30">
+      <header className="bg-[#121214] border-b border-[#242428] px-4 py-1.5 shrink-0 flex items-center justify-between z-30">
         {/* Left Side: VividCut Branding & Menu */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -2023,13 +2023,13 @@ export default function App() {
         </div>
 
         {/* Center: Interactive Project Name Renamer */}
-        <div className="flex items-center gap-1 bg-[#121214] border border-[#2d2d34] rounded px-3 py-1.5">
+        <div className="flex items-center gap-1 bg-[#0F0F10] border border-[#242428] rounded px-2.5 py-1">
           <input
             id="input-project-rename"
             type="text"
             value={project.name}
             onChange={(e) => updateProjectState({ ...project, name: e.target.value })}
-            className="bg-transparent border-none text-center text-xs font-bold text-slate-200 focus:outline-none focus:ring-0 w-36 sm:w-56 truncate"
+            className="bg-transparent border-none text-center text-[11px] font-bold text-slate-200 focus:outline-none focus:ring-0 w-36 sm:w-56 truncate"
             title="Double-click to rename your project"
           />
         </div>
@@ -2104,7 +2104,7 @@ export default function App() {
         />
 
         {/* Horizontal Divider 2 (Right panel resize handle) */}
-        {rightWidth > 0 && (
+        {rightWidth > 0 && selectedClip && (
           <div
             id="handle-right-resize"
             onMouseDown={handleRightResizeStart}
@@ -2132,7 +2132,7 @@ export default function App() {
             onUpdateProject={updateProjectState}
             currentTime={currentTime}
             onSeek={setCurrentTime}
-            width={rightWidth}
+            width={selectedClip ? rightWidth : 40}
             isResizing={isResizingRight}
             style={{ order: layoutOrders.propertiesOrder }}
           />

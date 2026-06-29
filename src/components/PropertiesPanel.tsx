@@ -210,6 +210,28 @@ export default function PropertiesPanel({
   const isCompact = width !== undefined && width < 280;
   const isLarge = width !== undefined && width >= 380;
 
+  if (width !== undefined && width <= 50) {
+    return (
+      <div 
+        id="inspector-properties-panel" 
+        className="bg-[#121214] border-t md:border-t-0 md:border-l border-[#2A2A2D]/40 w-10 flex flex-col h-full items-center py-4 select-none shrink-0"
+        style={{
+          width: `${width}px`,
+          transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.16, 1, 0.3, 1)',
+          ...style
+        }}
+        title="Inspector Panel (Select a clip to expand)"
+      >
+        <Sliders size={16} className="text-slate-500 mb-6" />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-[9px] font-extrabold text-slate-500 tracking-widest uppercase [writing-mode:vertical-lr] rotate-180 opacity-50">
+            Inspector Panel
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
       id="inspector-properties-panel" 
@@ -235,7 +257,7 @@ export default function PropertiesPanel({
       </div>
 
       {selectedClip ? (
-        <div className={isCompact ? 'p-2.5 flex flex-col gap-3.5' : isLarge ? 'p-6 flex flex-col gap-6' : 'p-4 flex flex-col gap-5'}>
+        <div className={isCompact ? 'p-2 flex flex-col gap-2.5' : isLarge ? 'p-4 flex flex-col gap-4' : 'p-3 flex flex-col gap-3.5'}>
           {/* General Properties */}
           <div className={`flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3'}`}>
             <div>
@@ -1368,66 +1390,14 @@ export default function PropertiesPanel({
           </div>
         </div>
       ) : (
-        /* Empty properties State: project level customization */
-        <div className="p-4 flex flex-col gap-4 animate-fadeIn text-center mt-6">
-          <Sliders size={32} className="mx-auto text-slate-500 mb-2 animate-pulse" />
+        /* Empty properties State: minimal placeholder */
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 h-full text-slate-500 gap-3 animate-fadeIn">
+          <Sliders size={24} className="text-slate-600 mb-1" />
           <div>
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wide">Video Project Settings</h3>
-            <p className="text-[11px] text-slate-500 mt-1">Select any clip on the timeline to inspect and edit its values, or tune project config below:</p>
-          </div>
-
-          <div className="border-t border-[#2A2A2D] pt-4 flex flex-col gap-3 text-left">
-            <div>
-              <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider">Project Title</label>
-              <input
-                id="input-project-name"
-                type="text"
-                value={project.name}
-                onChange={(e) => onUpdateProject({ ...project, name: e.target.value })}
-                className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider flex justify-between">
-                <span>Timeline Duration (s)</span>
-                <span className="text-[9px] text-[#00C4D0] normal-case font-normal">Auto-expands to fit clips</span>
-              </label>
-              <input
-                id="input-project-duration"
-                type="number"
-                min="5"
-                max="360000"
-                step="1"
-                value={project.duration}
-                onChange={(e) => {
-                  const val = Math.max(5, parseInt(e.target.value) || 5);
-                  let maxClipEnd = 0;
-                  project.tracks.forEach(track => {
-                    track.clips.forEach(clip => {
-                      const end = clip.start + clip.duration;
-                      if (end > maxClipEnd) {
-                        maxClipEnd = end;
-                      }
-                    });
-                  });
-                  onUpdateProject({
-                    ...project,
-                    userDuration: val,
-                    duration: Math.max(val, Math.ceil(maxClipEnd))
-                  } as any);
-                }}
-                className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-              />
-            </div>
-
-            <div className="bg-[#0F0F10] p-2.5 rounded-lg border border-[#2A2A2D] text-[10px] font-mono text-slate-500 leading-relaxed">
-              Specs summary:<br/>
-              • Aspect Ratio: 16:9 widescreen<br/>
-              • Frame rate: {project.fps} FPS<br/>
-              • Resolution: {project.width}x{project.height}<br/>
-              • Tracks: {project.tracks.length} active lanes
-            </div>
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">No clip selected</h3>
+            <p className="text-[10.5px] text-slate-500 mt-1 max-w-[200px] mx-auto leading-normal">
+              Select any clip on the timeline to inspect and edit its properties.
+            </p>
           </div>
         </div>
       )}
