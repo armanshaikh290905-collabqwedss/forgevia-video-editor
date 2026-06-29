@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Info,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   CheckCircle2,
   Sliders,
@@ -2104,7 +2106,7 @@ export default function App() {
         />
 
         {/* Horizontal Divider 2 (Right panel resize handle) */}
-        {rightWidth > 0 && selectedClip && (
+        {rightWidth > 0 && (
           <div
             id="handle-right-resize"
             onMouseDown={handleRightResizeStart}
@@ -2132,10 +2134,26 @@ export default function App() {
             onUpdateProject={updateProjectState}
             currentTime={currentTime}
             onSeek={setCurrentTime}
-            width={selectedClip ? rightWidth : 40}
+            width={rightWidth}
             isResizing={isResizingRight}
+            onToggleCollapse={() => togglePanelVisibility('properties')}
             style={{ order: layoutOrders.propertiesOrder }}
           />
+        )}
+
+        {/* Floating Expand Tab when Collapsed */}
+        {rightWidth === 0 && (
+          <button
+            onClick={() => togglePanelVisibility('properties')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#141416]/95 hover:bg-[#1E1E22]/95 text-indigo-400 hover:text-indigo-300 p-2.5 rounded-l-md border-l border-t border-b border-[#2A2A2D] shadow-[0_4px_24px_rgba(0,0,0,0.6)] z-40 transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer backdrop-blur-md"
+            title="Expand Properties Inspector Panel"
+            style={{ order: 999 }}
+          >
+            <ChevronLeft size={14} className="animate-pulse" />
+            <span className="text-[9px] font-extrabold uppercase tracking-widest [writing-mode:vertical-lr] rotate-180 py-1.5 text-slate-300">
+              Inspector
+            </span>
+          </button>
         )}
       </div>
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Settings, 
   Trash2, 
@@ -7,9 +7,25 @@ import {
   Clock, 
   Sparkles, 
   Volume2, 
+  VolumeX,
   Film,
   Compass,
-  Key
+  Key,
+  ChevronDown,
+  ChevronRight,
+  Info,
+  Maximize2,
+  Activity,
+  FolderOpen,
+  TextCursorInput,
+  Music,
+  Download,
+  Image,
+  Monitor,
+  Eye,
+  EyeOff,
+  RotateCw,
+  Scissors
 } from 'lucide-react';
 import { Clip, VideoClip, ImageClip, TextClip, AudioClip, VideoProject } from '../types';
 
@@ -23,7 +39,41 @@ interface PropertiesPanelProps {
   onSeek?: (time: number) => void;
   width?: number;
   isResizing?: boolean;
+  onToggleCollapse?: () => void;
   style?: React.CSSProperties;
+}
+
+interface SectionProps {
+  id: string;
+  title: string;
+  icon: React.ReactNode;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}
+
+function CollapsibleSection({ id, title, icon, expanded, onToggle, children }: SectionProps) {
+  return (
+    <div className="border-b border-[#2A2A2D]/40 last:border-0">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between py-2 px-3 hover:bg-[#1E1E21]/60 transition-colors text-slate-300 hover:text-slate-100 select-none cursor-pointer"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-indigo-400">{icon}</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider">{title}</span>
+        </div>
+        <div className="text-slate-500">
+          {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        </div>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 pt-1 flex flex-col gap-2.5 bg-[#121214]/15">
+          {children}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PropertiesPanel({
@@ -36,10 +86,57 @@ export default function PropertiesPanel({
   onSeek,
   width,
   isResizing,
+  onToggleCollapse,
   style
 }: PropertiesPanelProps) {
 
-  // Update properties handler
+  // State to remember collapsible section states (using localStorage)
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('vividcut-expanded-sections-v2');
+      return saved ? JSON.parse(saved) : {
+        // Defaults: Expand important sections initially
+        general: true,
+        transform: true,
+        animation: true,
+        speed: true,
+        audio: true,
+        color: true,
+        effects: true,
+        font: true,
+        size: true,
+        color_text: true,
+        alignment: true,
+        shadow: true,
+        outline: true,
+        spacing: true,
+        volume: true,
+        fadein: true,
+        fadeout: true,
+        noise: true,
+        pitch: true,
+        waveform: true,
+        position: true,
+        scale: true,
+        rotation: true,
+        opacity: true,
+        crop: true,
+        mask: true,
+      };
+    } catch (_) {
+      return {};
+    }
+  });
+
+  const toggleSection = (id: string) => {
+    setExpandedSections(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      localStorage.setItem('vividcut-expanded-sections-v2', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Update properties helper
   const handlePropChange = (field: string, value: any) => {
     if (!selectedClip) return;
     onUpdateClip({
@@ -57,7 +154,6 @@ export default function PropertiesPanel({
 
     // Check if the property has active keyframes
     if (selectedClip.keyframes && selectedClip.keyframes.length > 0) {
-      // Look for a keyframe extremely close to the current scrubber position (within 0.1s threshold)
       const exactKf = selectedClip.keyframes.find(kf => Math.abs(kf.time - clipTime) < 0.1);
       if (exactKf && exactKf[prop] !== undefined) {
         return exactKf[prop] as number;
@@ -205,590 +301,519 @@ export default function PropertiesPanel({
     }
   };
 
+  const handleAddText = () => {
+    let textTrack = project.tracks.find(t => t.type === 'text');
+    if (!textTrack) {
+      textTrack = project.tracks[0];
+    }
+    if (textTrack) {
+      const clipId = `clip_manual_${Date.now()}`;
+      const newClip: TextClip = {
+        id: clipId,
+        name: 'New Custom Overlay',
+        type: 'text',
+        start: currentTime,
+        duration: 5,
+        sourceDuration: 5,
+        sourceOffset: 0,
+        text: 'TAP TO EDIT OVERLAY',
+        fontSize: 24,
+        color: '#ffffff',
+        backgroundColor: '#ec4899',
+        fontFamily: 'Inter',
+        alignment: 'center',
+        animation: 'fade',
+        positionY: 50
+      };
+      const updatedTracks = project.tracks.map(t => {
+        if (t.id === textTrack!.id) {
+          return { ...t, clips: [...t.clips, newClip] };
+        }
+        return t;
+      });
+      onUpdateProject({ ...project, tracks: updatedTracks });
+    }
+  };
+
+  const handleAddAudio = () => {
+    let audioTrack = project.tracks.find(t => t.type === 'audio');
+    if (!audioTrack) {
+      audioTrack = project.tracks[0];
+    }
+    if (audioTrack) {
+      const clipId = `clip_manual_${Date.now()}`;
+      const newClip: AudioClip = {
+        id: clipId,
+        name: 'New Synth Beat',
+        type: 'audio',
+        start: currentTime,
+        duration: 10,
+        sourceDuration: 60,
+        sourceOffset: 0,
+        volume: 0.5,
+        synthType: 'ambient',
+        url: 'synthesized',
+        speed: 1.0
+      };
+      const updatedTracks = project.tracks.map(t => {
+        if (t.id === audioTrack!.id) {
+          return { ...t, clips: [...t.clips, newClip] };
+        }
+        return t;
+      });
+      onUpdateProject({ ...project, tracks: updatedTracks });
+    }
+  };
+
   const nextClip = getNextClip();
 
-  const isCompact = width !== undefined && width < 280;
-  const isLarge = width !== undefined && width >= 380;
+  // --- RENDERING IF NOTHING IS SELECTED: PROJECT INFORMATION ---
+  if (!selectedClip) {
+    const totalClips = project.tracks.reduce((sum, t) => sum + t.clips.length, 0);
+    const totalTracks = project.tracks.length;
+    const actualDuration = Math.max(0, ...project.tracks.flatMap(t => t.clips.map(c => c.start + c.duration)));
 
-  if (width !== undefined && width <= 50) {
     return (
       <div 
         id="inspector-properties-panel" 
-        className="bg-[#121214] border-t md:border-t-0 md:border-l border-[#2A2A2D]/40 w-10 flex flex-col h-full items-center py-4 select-none shrink-0"
-        style={{
-          width: `${width}px`,
-          transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.16, 1, 0.3, 1)',
-          ...style
-        }}
-        title="Inspector Panel (Select a clip to expand)"
+        className="bg-[#141416] border-t md:border-t-0 md:border-l border-[#2A2A2D] w-full md:w-80 flex flex-col h-full overflow-y-auto font-sans text-slate-300"
+        style={style}
       >
-        <Sliders size={16} className="text-slate-500 mb-6" />
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-[9px] font-extrabold text-slate-500 tracking-widest uppercase [writing-mode:vertical-lr] rotate-180 opacity-50">
-            Inspector Panel
-          </span>
+        {/* Panel Header */}
+        <div className="px-3.5 py-3 border-b border-[#2A2A2D] bg-[#0E0E10] shrink-0 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Monitor size={14} className="text-indigo-400" />
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-200">
+              Project Dashboard
+            </span>
+          </div>
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="p-1 hover:bg-[#202024] rounded text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+              title="Collapse Properties Panel"
+            >
+              <ChevronRight size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Project info & Quick Actions container */}
+        <div className="p-3.5 flex flex-col gap-4">
+          
+          {/* Section: Project Information Card */}
+          <div className="bg-[#1C1C1F]/40 border border-[#2A2A2D]/50 rounded-lg p-3 flex flex-col gap-2.5">
+            <div className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 border-b border-[#2A2A2D]/40 pb-1.5">
+              <Info size={11} />
+              Project Configurations
+            </div>
+            
+            {/* Project resolution dropdown/inputs */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[8.5px] text-slate-400 uppercase tracking-wide font-bold">Aspect Ratio Preset</label>
+              <select
+                value={`${project.width}x${project.height}`}
+                onChange={(e) => {
+                  const [w, h] = e.target.value.split('x').map(Number);
+                  onUpdateProject({ ...project, width: w, height: h });
+                }}
+                className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+              >
+                <option value="1920x1080">16:9 Landscape - Full HD (1920x1080)</option>
+                <option value="1080x1920">9:16 Portrait - TikTok/Reels (1080x1920)</option>
+                <option value="1080x1080">1:1 Square - Instagram (1080x1080)</option>
+                <option value="1280x720">16:9 HD Ready (1280x720)</option>
+              </select>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div>
+                  <label className="text-[8px] text-slate-500 font-bold block mb-0.5">Width (px)</label>
+                  <input
+                    type="number"
+                    value={project.width}
+                    onChange={(e) => onUpdateProject({ ...project, width: parseInt(e.target.value) || 1920 })}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] text-slate-500 font-bold block mb-0.5">Height (px)</label>
+                  <input
+                    type="number"
+                    value={project.height}
+                    onChange={(e) => onUpdateProject({ ...project, height: parseInt(e.target.value) || 1080 })}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* FPS controls */}
+            <div className="mt-1 flex flex-col gap-1">
+              <label className="text-[8.5px] text-slate-400 uppercase tracking-wide font-bold">Timeline Frame Rate</label>
+              <select
+                value={project.fps}
+                onChange={(e) => onUpdateProject({ ...project, fps: Number(e.target.value) })}
+                className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+              >
+                <option value="24">24 FPS - Cinematic Film</option>
+                <option value="30">30 FPS - Web / TV Broadcast</option>
+                <option value="60">60 FPS - High Frame Rate Gaming</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Statistics Block */}
+          <div className="bg-[#1C1C1F]/40 border border-[#2A2A2D]/50 rounded-lg p-3 flex flex-col gap-2.5">
+            <div className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 border-b border-[#2A2A2D]/40 pb-1.5">
+              <Activity size={11} />
+              Production Metrics
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-[#0E0E10] p-2 rounded border border-[#2A2A2D]/30 flex flex-col justify-between">
+                <span className="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Timeline Duration</span>
+                <span className="text-xs font-extrabold font-mono text-slate-200">{project.duration.toFixed(1)}s</span>
+              </div>
+              <div className="bg-[#0E0E10] p-2 rounded border border-[#2A2A2D]/30 flex flex-col justify-between">
+                <span className="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Active Assets</span>
+                <span className="text-xs font-extrabold font-mono text-emerald-400">{actualDuration.toFixed(1)}s</span>
+              </div>
+              <div className="bg-[#0E0E10] p-2 rounded border border-[#2A2A2D]/30 flex flex-col justify-between">
+                <span className="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Clips Compiled</span>
+                <span className="text-xs font-extrabold font-mono text-indigo-400">{totalClips}</span>
+              </div>
+              <div className="bg-[#0E0E10] p-2 rounded border border-[#2A2A2D]/30 flex flex-col justify-between">
+                <span className="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Timeline Tracks</span>
+                <span className="text-xs font-extrabold font-mono text-slate-300">{totalTracks}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400 font-bold bg-[#0E0E10]/80 px-2 py-1.5 rounded border border-[#2A2A2D]/20">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <span>Autosave Secured (Stored locally)</span>
+            </div>
+          </div>
+
+          {/* Quick Actions Panel */}
+          <div className="flex flex-col gap-2.5 mt-1">
+            <div className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+              <Sparkles size={11} className="text-indigo-400" />
+              Quick Production Toolbar
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  document.getElementById('vividcut-uploader-input')?.click();
+                }}
+                className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[10.5px] rounded shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer border border-indigo-500/10 active:scale-[0.98]"
+              >
+                <FolderOpen size={12} />
+                Import Media Files
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleAddText}
+                  className="py-2 px-2 bg-[#1C1C1F] hover:bg-[#25252A] border border-[#2A2A2D] text-slate-200 hover:text-white font-bold text-[10px] rounded flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-[0.98]"
+                >
+                  <TextCursorInput size={11} className="text-indigo-400" />
+                  Add Overlay Text
+                </button>
+                <button
+                  onClick={handleAddAudio}
+                  className="py-2 px-2 bg-[#1C1C1F] hover:bg-[#25252A] border border-[#2A2A2D] text-slate-200 hover:text-white font-bold text-[10px] rounded flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-[0.98]"
+                >
+                  <Music size={11} className="text-emerald-400" />
+                  Add Audio Synth
+                </button>
+              </div>
+
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('open-video-exporter'));
+                }}
+                className="w-full py-2.5 px-3 bg-transparent hover:bg-emerald-600/10 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 font-extrabold text-[10.5px] rounded flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98] mt-1"
+              >
+                <Download size={12} />
+                Export Compiled Video
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
     );
   }
 
+  // --- RENDERING IF A CLIP IS SELECTED ---
   return (
     <div 
       id="inspector-properties-panel" 
-      className="bg-[#161618] border-t md:border-t-0 md:border-l border-[#2A2A2D] w-full md:w-80 flex flex-col h-[400px] md:h-full overflow-y-auto"
-      style={{
-        ...(typeof window !== 'undefined' && window.innerWidth >= 768 && width !== undefined 
-          ? { 
-              width: `${width}px`,
-              transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.16, 1, 0.3, 1)'
-            } 
-          : {}),
-        ...style
-      }}
+      className="bg-[#141416] border-t md:border-t-0 md:border-l border-[#2A2A2D] w-full md:w-80 flex flex-col h-full overflow-y-auto font-sans text-slate-300 select-none"
+      style={style}
     >
       {/* Panel Header */}
-      <div className={`px-4 py-3 border-b border-[#2A2A2D] bg-[#0F0F10] shrink-0 flex items-center gap-2 ${isCompact ? 'justify-center' : ''}`}>
-        <Settings size={14} className="text-indigo-400" />
-        {!isCompact && (
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-            {isLarge ? 'Professional Clip Properties Inspector' : 'Clip Inspector'}
+      <div className="px-3.5 py-2.5 border-b border-[#2A2A2D] bg-[#0E0E10] shrink-0 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 overflow-hidden">
+          <Settings size={13} className="text-indigo-400 shrink-0" />
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-200 truncate">
+            {selectedClip.type} properties
           </span>
-        )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="p-1 hover:bg-[#202024] rounded text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+              title="Collapse Properties Panel"
+            >
+              <ChevronRight size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {selectedClip ? (
-        <div className={isCompact ? 'p-2 flex flex-col gap-2.5' : isLarge ? 'p-4 flex flex-col gap-4' : 'p-3 flex flex-col gap-3.5'}>
-          {/* General Properties */}
-          <div className={`flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3'}`}>
-            <div>
-              <label className={`${isCompact ? 'text-[8.5px]' : isLarge ? 'text-xs' : 'text-[10px]'} text-slate-400 font-bold block mb-1 uppercase tracking-wider`}>
-                {isLarge ? 'Selected Clip Identification Name' : 'Clip Name'}
-              </label>
-              <input
-                id="input-inspector-clip-name"
-                type="text"
-                value={selectedClip.name}
-                onChange={(e) => handlePropChange('name', e.target.value)}
-                className={`w-full bg-[#0F0F10] border border-[#2A2A2D] rounded ${isCompact ? 'px-2 py-1 text-[11px]' : isLarge ? 'px-3 py-2 text-sm' : 'px-2.5 py-1.5 text-xs'} text-slate-200 focus:outline-none focus:border-indigo-500 font-medium`}
-              />
-            </div>
+      {/* Main Form Fields Container with compact gap */}
+      <div className="flex-1 flex flex-col overflow-y-auto">
 
-            {/* Timing & Duration tuning */}
-            <div className={`bg-[#121214] ${isCompact ? 'p-2.5' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D] grid ${isLarge ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
-              <div className="col-span-full text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1 mb-1">
-                <Clock size={11} className="text-slate-400" />
-                {isLarge ? 'Timeline Synchronization & Precision Trim' : 'Timing Precision Tuning'}
-              </div>
-              <div>
-                <label className="text-[9px] text-slate-400 block mb-0.5">
-                  {isLarge ? 'Timeline Start (s)' : isCompact ? 'Start (s)' : 'Start Time (s)'}
-                </label>
-                <input
-                  id="input-inspector-clip-start"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={Number(selectedClip.start.toFixed(1))}
-                  onChange={(e) => handlePropChange('start', Math.max(0, parseFloat(e.target.value) || 0))}
-                  className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[9px] text-slate-400 block mb-0.5">
-                  {isLarge ? 'Play Duration (s)' : isCompact ? 'Dur (s)' : 'Duration (s)'}
-                </label>
-                <input
-                  id="input-inspector-clip-duration"
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={Number(selectedClip.duration.toFixed(1))}
-                  onChange={(e) => handlePropChange('duration', Math.max(0.1, parseFloat(e.target.value) || 0.1))}
-                  className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {isLarge && (
-                <div className="animate-fadeIn">
-                  <label className="text-[9px] text-slate-400 block mb-0.5">Timeline End (s)</label>
+        {/* ----------------- VIDEO CLIP PROPERTIES ----------------- */}
+        {selectedClip.type === 'video' && (
+          <div className="flex flex-col">
+            
+            {/* 1. General Section */}
+            <CollapsibleSection
+              id="general"
+              title="General"
+              icon={<Info size={11} />}
+              expanded={!!expandedSections.general}
+              onToggle={() => toggleSection('general')}
+            >
+              <div className="flex flex-col gap-2">
+                <div>
+                  <label className="text-[8px] text-slate-500 font-extrabold uppercase tracking-wider block mb-0.5">Clip Name</label>
                   <input
-                    id="input-inspector-clip-end"
-                    type="number"
-                    step="0.1"
-                    value={Number((selectedClip.start + selectedClip.duration).toFixed(1))}
-                    onChange={(e) => {
-                      const newEnd = parseFloat(e.target.value) || 0;
-                      const newDur = Math.max(0.1, newEnd - selectedClip.start);
-                      handlePropChange('duration', newDur);
-                    }}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
+                    type="text"
+                    value={selectedClip.name}
+                    onChange={(e) => handlePropChange('name', e.target.value)}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
                   />
                 </div>
-              )}
-
-              {isLarge && (
-                <div className="col-span-full mt-2 pt-2 border-t border-[#2A2A2D]/40">
-                  <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                    <span>Source Media Trim Offset</span>
-                    <span className="font-mono text-[9px]">{(selectedClip.sourceOffset ?? 0).toFixed(1)}s / {(selectedClip.sourceDuration ?? 30).toFixed(1)}s total</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[8px] text-slate-500 font-extrabold uppercase tracking-wider block mb-0.5">Start Time (s)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={Number(selectedClip.start.toFixed(1))}
+                      onChange={(e) => handlePropChange('start', Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[8px] text-slate-500 font-extrabold uppercase tracking-wider block mb-0.5">Duration (s)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={Number(selectedClip.duration.toFixed(1))}
+                      onChange={(e) => handlePropChange('duration', Math.max(0.1, parseFloat(e.target.value) || 0.1))}
+                      className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-300 font-mono focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between items-center text-[8px] text-slate-500 font-extrabold uppercase tracking-wider mb-0.5">
+                    <span>Source Trim Offset</span>
+                    <span className="font-mono text-[9px]">{(selectedClip.sourceOffset ?? 0).toFixed(1)}s / {(selectedClip.sourceDuration ?? 30).toFixed(1)}s</span>
                   </div>
                   <input
-                    id="slider-inspector-source-offset"
                     type="range"
                     min="0"
                     max={Math.max(10, selectedClip.sourceDuration ?? 30)}
                     step="0.1"
                     value={selectedClip.sourceOffset ?? 0}
                     onChange={(e) => handlePropChange('sourceOffset', parseFloat(e.target.value))}
-                    className="w-full accent-indigo-500 h-2 rounded bg-slate-950 border border-slate-800"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="border-t border-[#2A2A2D] my-1" />
-
-          {/* Type-Specific Properties: VIDEO */}
-          {selectedClip.type === 'video' && (
-            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
-                <Film size={13} className="text-indigo-400" />
-                {isLarge ? 'Professional Video Track Layer Controls' : 'Video Controls'}
-              </div>
-
-              {/* Volume */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    {isLarge ? 'Master Track Layer Audio Volume' : isCompact ? 'Volume' : 'Volume Level'}
-                  </label>
-                  <span className="text-[10px] font-mono font-bold text-slate-400">{Math.round((selectedClip as VideoClip).volume * 100)}%</span>
-                </div>
-                <input
-                  id="slider-inspector-video-volume"
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={(selectedClip as VideoClip).volume}
-                  onChange={(e) => handlePropChange('volume', parseFloat(e.target.value))}
-                  className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 cursor-pointer rounded bg-slate-950 border border-slate-800' : 'h-1.5 rounded'}`}
-                />
-              </div>
-
-              {/* Speed Multiplier */}
-              <div>
-                <label className="text-[10px] text-slate-400 font-bold block mb-1.5 uppercase tracking-wider">
-                  {isLarge ? 'Relative Playback Speed Multiplier' : isCompact ? 'Speed' : 'Playback Speed'}
-                </label>
-                <select
-                  id="select-inspector-video-speed"
-                  value={(selectedClip as VideoClip).speed}
-                  onChange={(e) => handlePropChange('speed', parseFloat(e.target.value))}
-                  className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
-                >
-                  <option value="0.5">0.5x {isLarge ? '(Slowing Cinema Motion)' : '(Slow)'}</option>
-                  <option value="1.0">1.0x (Normal Playback Speed)</option>
-                  <option value="1.5">1.5x {isLarge ? '(Accelerated Playback)' : '(Fast)'}</option>
-                  <option value="2.0">2.0x {isLarge ? '(Double Speed Fast Forward)' : '(Double)'}</option>
-                </select>
-              </div>
-
-              {/* Color Grading & FX */}
-              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Sliders size={11} className="text-indigo-400" />
-                  {isLarge ? 'Advanced Color Grading & Cinematic FX' : 'Color Grading & FX'}
-                </span>
-
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">
-                    {isLarge ? 'Selected Cinematic Grade Filter Style' : 'Creative Visual FX'}
-                  </label>
-                  <select
-                    id="select-inspector-video-filter"
-                    value={(selectedClip as VideoClip).filter}
-                    onChange={(e) => handlePropChange('filter', e.target.value)}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="none">Normal (No Filter)</option>
-                    <option value="grayscale">Noir Black &amp; White</option>
-                    <option value="sepia">Antique Sepia</option>
-                    <option value="invert">Infrared Invert</option>
-                    <option value="warm">Warm Cinematic Orange</option>
-                    <option value="cool">Teal &amp; Cyan Polar</option>
-                    <option value="vhs">Cyberpunk VHS Tape</option>
-                    <option value="blur">Dream Lens Blur</option>
-                    <option value="hue-rotate">Acid Hue Shift</option>
-                  </select>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>{isLarge ? 'Layer Lighting Exposure (Brightness)' : isCompact ? 'Bright' : 'Brightness'}</span>
-                    <span className="font-mono">{(selectedClip as VideoClip).brightness}%</span>
-                  </div>
-                  <input
-                    id="slider-inspector-video-brightness"
-                    type="range"
-                    min="50"
-                    max="150"
-                    value={(selectedClip as VideoClip).brightness}
-                    onChange={(e) => handlePropChange('brightness', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>{isLarge ? 'Dynamic Range Contrast Intensity' : isCompact ? 'Contrast' : 'Contrast'}</span>
-                    <span className="font-mono">{(selectedClip as VideoClip).contrast}%</span>
-                  </div>
-                  <input
-                    id="slider-inspector-video-contrast"
-                    type="range"
-                    min="50"
-                    max="150"
-                    value={(selectedClip as VideoClip).contrast ?? 100}
-                    onChange={(e) => handlePropChange('contrast', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>{isLarge ? 'Color Saturation and Vibrancy Level' : isCompact ? 'Satur' : 'Saturation'}</span>
-                    <span className="font-mono">{(selectedClip as VideoClip).saturation ?? 100}%</span>
-                  </div>
-                  <input
-                    id="slider-inspector-video-saturation"
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={(selectedClip as VideoClip).saturation ?? 100}
-                    onChange={(e) => handlePropChange('saturation', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
                   />
                 </div>
               </div>
-            </div>
-          )}
+            </CollapsibleSection>
 
-          {/* Type-Specific Properties: IMAGE */}
-          {selectedClip.type === 'image' && (
-            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
-                <Sliders size={13} className="text-indigo-400" />
-                {isLarge ? 'Professional Image Backdrop Settings' : 'Image Settings'}
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">
-                  {isLarge ? 'Selected Aesthetic Image Grading Filter' : 'Visual FX Filter'}
-                </label>
-                <select
-                  id="select-inspector-image-filter"
-                  value={(selectedClip as ImageClip).filter}
-                  onChange={(e) => handlePropChange('filter', e.target.value)}
-                  className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="none">Normal (No Filter)</option>
-                  <option value="grayscale">Noir Black &amp; White</option>
-                  <option value="sepia">Antique Sepia</option>
-                  <option value="invert">Infrared Invert</option>
-                  <option value="warm">Warm Orange Grade</option>
-                  <option value="cool">Teal &amp; Cool Polar</option>
-                  <option value="blur">Dream Blur</option>
-                  <option value="hue-rotate">Acid Hue Shift</option>
-                </select>
-              </div>
-
-              <div className={`bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D] flex flex-col gap-3`}>
-                <div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>{isLarge ? 'Image Ambient Highlights (Brightness)' : isCompact ? 'Bright' : 'Brightness'}</span>
-                    <span className="font-mono">{(selectedClip as ImageClip).brightness}%</span>
-                  </div>
-                  <input
-                    id="slider-inspector-image-brightness"
-                    type="range"
-                    min="50"
-                    max="150"
-                    value={(selectedClip as ImageClip).brightness}
-                    onChange={(e) => handlePropChange('brightness', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>{isLarge ? 'Dynamic Backlight Contrast Intensity' : isCompact ? 'Contrast' : 'Contrast'}</span>
-                    <span className="font-mono">{(selectedClip as ImageClip).contrast}%</span>
-                  </div>
-                  <input
-                    id="slider-inspector-image-contrast"
-                    type="range"
-                    min="50"
-                    max="150"
-                    value={(selectedClip as ImageClip).contrast}
-                    onChange={(e) => handlePropChange('contrast', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                    <span>{isLarge ? 'Color Saturation and Vibrancy Gain' : isCompact ? 'Satur' : 'Saturation'}</span>
-                    <span className="font-mono">{(selectedClip as ImageClip).saturation}%</span>
-                  </div>
-                  <input
-                    id="slider-inspector-image-saturation"
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={(selectedClip as ImageClip).saturation}
-                    onChange={(e) => handlePropChange('saturation', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 cursor-pointer bg-slate-950 rounded' : 'h-1'}`}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Type-Specific Properties: AUDIO */}
-          {selectedClip.type === 'audio' && (
-            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
-                <Volume2 size={13} className="text-emerald-500" />
-                {isLarge ? 'Professional Audio Layer Output Controls' : 'Audio Controls'}
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    {isLarge ? 'Master Output Volume Gain' : isCompact ? 'Volume' : 'Volume Level'}
-                  </label>
-                  <span className="text-[10px] font-mono font-bold text-slate-400">{Math.round((selectedClip as AudioClip).volume * 100)}%</span>
-                </div>
-                <input
-                  id="slider-inspector-audio-volume"
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={(selectedClip as AudioClip).volume}
-                  onChange={(e) => handlePropChange('volume', parseFloat(e.target.value))}
-                  className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 cursor-pointer rounded bg-slate-950 border border-slate-800' : 'h-1.5 rounded'}`}
-                />
-              </div>
-
-              {/* Synth Info label */}
-              {(selectedClip as AudioClip).synthType && (selectedClip as AudioClip).synthType !== 'none' && (
-                <div className={`bg-emerald-950/10 border border-emerald-900/20 ${isCompact ? 'p-1.5 text-[9px]' : 'p-2.5 text-[10px]'} rounded text-emerald-300 leading-relaxed font-sans`}>
-                  <span className="font-bold block uppercase mb-0.5">
-                    {isLarge ? 'Procedural Audio Synthesizer Engine' : 'Procedural Sound Track'}
-                  </span>
-                  {!isCompact && "This track uses a loop synthesizer to generate bass, percussion, and chord sequences using the Web Audio API context."}
-                  {isCompact && "Procedural Web Audio API synth loop."}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Type-Specific Properties: TEXT OVERLAYS */}
-          {selectedClip.type === 'text' && (
-            <div className={`flex flex-col ${isCompact ? 'gap-3' : isLarge ? 'gap-5' : 'gap-4'} animate-fadeIn`}>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wide">
-                <FontIcon size={13} className="text-indigo-400" />
-                {isLarge ? 'Advanced Vector Text Overlays & Subtitles' : 'Text overlay / subtitles'}
-              </div>
-
-              {/* Text content input */}
-              <div>
-                <label className="text-[10px] text-slate-400 font-bold block mb-1 uppercase tracking-wider">
-                  {isLarge ? 'Dynamic String Text Content Input' : 'Text Content'}
-                </label>
-                <textarea
-                  id="textarea-inspector-text-val"
-                  value={(selectedClip as TextClip).text}
-                  onChange={(e) => handlePropChange('text', e.target.value)}
-                  rows={isCompact ? 1 : isLarge ? 3 : 2}
-                  className="w-full bg-[#0F0F10] border border-[#2A2A2D] rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans leading-relaxed resize-none"
-                />
-              </div>
-
-              {/* Styling parameters */}
-              <div className={`bg-[#121214] ${isCompact ? 'p-2 gap-2.5' : isLarge ? 'p-4 gap-4' : 'p-3 gap-3'} rounded-lg border border-[#2A2A2D] flex flex-col`}>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <FontIcon size={11} className="text-indigo-400" /> 
-                  {isLarge ? 'Advanced Typography & Layout Styling' : 'Styling & Typography'}
-                </span>
-
-                <div>
-                  <label className="text-[9px] text-slate-400 block mb-0.5">
-                    {isLarge ? 'Active Font Family Typeface' : 'Font Family'}
-                  </label>
-                  <select
-                    id="select-inspector-text-font"
-                    value={(selectedClip as TextClip).fontFamily}
-                    onChange={(e) => handlePropChange('fontFamily', e.target.value)}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
-                  >
-                    <option value="Inter">Inter (Sans-Serif)</option>
-                    <option value="Space Grotesk">Space Grotesk (Tech Heading)</option>
-                    <option value="Playfair Display">Playfair Display (Elegant Serif)</option>
-                    <option value="JetBrains Mono">JetBrains Mono (Technical Mono)</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">
-                      {isLarge ? 'Absolute Size (px)' : 'Font Size (px)'}
-                    </label>
-                    <input
-                      id="input-inspector-text-fontsize"
-                      type="number"
-                      min="10"
-                      max="100"
-                      value={(selectedClip as TextClip).fontSize}
-                      onChange={(e) => handlePropChange('fontSize', parseInt(e.target.value) || 24)}
-                      className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">
-                      {isLarge ? 'Horizontal Alignment' : 'Alignment'}
-                    </label>
-                    <select
-                      id="select-inspector-text-alignment"
-                      value={(selectedClip as TextClip).alignment}
-                      onChange={(e) => handlePropChange('alignment', e.target.value)}
-                      className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="left">Left</option>
-                      <option value="center">Center</option>
-                      <option value="right">Right</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className={`${isLarge ? 'grid grid-cols-2 gap-3' : 'grid-cols-2 gap-2'} grid`}>
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Text Color</label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        id="picker-inspector-text-color"
-                        type="color"
-                        value={(selectedClip as TextClip).color}
-                        onChange={(e) => handlePropChange('color', e.target.value)}
-                        className="w-6 h-6 border border-[#2A2A2D] bg-[#161618] rounded cursor-pointer"
-                      />
-                      {!isCompact && <span className="text-[10px] font-mono text-slate-300">{(selectedClip as TextClip).color}</span>}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">
-                      {isLarge ? 'Background Box Color' : 'Box Fill Color'}
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        id="picker-inspector-text-bgcolor"
-                        type="color"
-                        value={(selectedClip as TextClip).backgroundColor === 'transparent' ? '#000000' : (selectedClip as TextClip).backgroundColor}
-                        disabled={(selectedClip as TextClip).backgroundColor === 'transparent'}
-                        onChange={(e) => handlePropChange('backgroundColor', e.target.value)}
-                        className="w-6 h-6 border border-[#2A2A2D] bg-[#161618] rounded cursor-pointer disabled:opacity-30"
-                      />
-                      <select
-                        id="select-inspector-text-bgcolor-type"
-                        value={(selectedClip as TextClip).backgroundColor === 'transparent' ? 'transparent' : 'colored'}
-                        onChange={(e) => {
-                          const val = e.target.value === 'transparent' ? 'transparent' : '#000000';
-                          handlePropChange('backgroundColor', val);
-                        }}
-                        className="bg-[#161618] border border-[#2A2A2D] rounded text-[10px] text-slate-300 focus:outline-none focus:border-indigo-500"
+            {/* 2. Transform Section */}
+            <CollapsibleSection
+              id="transform"
+              title="Transform"
+              icon={<Maximize2 size={11} />}
+              expanded={!!expandedSections.transform}
+              onToggle={() => toggleSection('transform')}
+            >
+              <div className="flex flex-col gap-2.5">
+                
+                {/* Opacity Transform */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[9px] font-bold">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleToggleKeyframe('opacity')}
+                        className={`text-[11px] focus:outline-none transition-all cursor-pointer ${
+                          selectedClip.keyframes?.some(k => k.opacity !== undefined)
+                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.opacity !== undefined)
+                              ? 'text-indigo-400 font-bold scale-110'
+                              : 'text-indigo-400/50 hover:text-indigo-400'
+                            : 'text-slate-600 hover:text-slate-400'
+                        }`}
+                        title="Keyframe Opacity"
                       >
-                        <option value="colored">{isCompact ? 'Col' : 'Color'}</option>
-                        <option value="transparent">{isCompact ? 'Trans' : 'Transparent'}</option>
-                      </select>
+                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.opacity !== undefined) ? '◆' : '◇'}
+                      </button>
+                      <span className="text-slate-300 font-bold">Opacity</span>
                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center text-[9px] text-slate-400 mb-0.5">
-                    <span>{isLarge ? 'Vertical Y-Axis Position Percentage' : isCompact ? 'Pos Y' : 'Vertical Position (Y%)'}</span>
-                    <span className="font-mono">{(selectedClip as TextClip).positionY}%</span>
+                    <span className="font-mono text-slate-400">{Math.round(getPropertyValueAtTime('opacity') * 100)}%</span>
                   </div>
                   <input
-                    id="slider-inspector-text-position-y"
                     type="range"
-                    min="10"
-                    max="90"
-                    value={(selectedClip as TextClip).positionY}
-                    onChange={(e) => handlePropChange('positionY', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={getPropertyValueAtTime('opacity')}
+                    onChange={(e) => handleUpdateProperty('opacity', parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
                   />
                 </div>
 
-                <div>
-                  <label className="text-[9px] text-slate-400 block mb-0.5">Word Art Preset Style</label>
-                  <select
-                    id="select-inspector-text-preset"
-                    value={(selectedClip as TextClip).stylePreset || 'none'}
-                    onChange={(e) => handlePropChange('stylePreset', e.target.value)}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 mb-2 font-medium"
-                  >
-                    <option value="none">Default (Plain text)</option>
-                    <option value="neon">Neon Glow (Retro)</option>
-                    <option value="cyber">Cyber Punch (Glitch/Vibe)</option>
-                    <option value="vintage">Vintage Wood (Warm outline)</option>
-                    <option value="subtitles">Subtitles Overlay (White/Black shadow)</option>
-                  </select>
+                {/* Scale Transform */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[9px] font-bold">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleToggleKeyframe('scale')}
+                        className={`text-[11px] focus:outline-none transition-all cursor-pointer ${
+                          selectedClip.keyframes?.some(k => k.scale !== undefined)
+                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.scale !== undefined)
+                              ? 'text-indigo-400 font-bold scale-110'
+                              : 'text-indigo-400/50 hover:text-indigo-400'
+                            : 'text-slate-600 hover:text-slate-400'
+                        }`}
+                        title="Keyframe Scale"
+                      >
+                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.scale !== undefined) ? '◆' : '◇'}
+                      </button>
+                      <span className="text-slate-300 font-bold">Scale</span>
+                    </div>
+                    <span className="font-mono text-slate-400">{getPropertyValueAtTime('scale').toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="3"
+                    step="0.05"
+                    value={getPropertyValueAtTime('scale')}
+                    onChange={(e) => handleUpdateProperty('scale', parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
                 </div>
 
-                <div>
-                  <label className="text-[9px] text-slate-400 block mb-0.5">Entrance FX Animation</label>
-                  <select
-                    id="select-inspector-text-animation"
-                    value={(selectedClip as TextClip).animation}
-                    onChange={(e) => handlePropChange('animation', e.target.value)}
-                    className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
-                  >
-                    <option value="none">Normal (Instant)</option>
-                    <option value="fade">Cinema Fade In/Out</option>
-                    <option value="slide">Left Slide Entrance</option>
-                    <option value="zoom">Elastic Zoom Pop</option>
-                    <option value="glitch">Glitch Hologram Flicker</option>
-                  </select>
+                {/* Position X Offset */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[9px] font-bold">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleToggleKeyframe('positionX')}
+                        className={`text-[11px] focus:outline-none transition-all cursor-pointer ${
+                          selectedClip.keyframes?.some(k => k.positionX !== undefined)
+                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionX !== undefined)
+                              ? 'text-indigo-400 font-bold scale-110'
+                              : 'text-indigo-400/50 hover:text-indigo-400'
+                            : 'text-slate-600 hover:text-slate-400'
+                        }`}
+                        title="Keyframe Position X"
+                      >
+                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionX !== undefined) ? '◆' : '◇'}
+                      </button>
+                      <span className="text-slate-300 font-bold">Position X</span>
+                    </div>
+                    <span className="font-mono text-slate-400">{getPropertyValueAtTime('positionX') > 0 ? '+' : ''}{Math.round(getPropertyValueAtTime('positionX'))}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value={getPropertyValueAtTime('positionX')}
+                    onChange={(e) => handleUpdateProperty('positionX', parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
                 </div>
+
+                {/* Position Y Offset */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[9px] font-bold">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleToggleKeyframe('positionY')}
+                        className={`text-[11px] focus:outline-none transition-all cursor-pointer ${
+                          selectedClip.keyframes?.some(k => k.positionY !== undefined)
+                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionY !== undefined)
+                              ? 'text-indigo-400 font-bold scale-110'
+                              : 'text-indigo-400/50 hover:text-indigo-400'
+                            : 'text-slate-600 hover:text-slate-400'
+                        }`}
+                        title="Keyframe Position Y"
+                      >
+                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionY !== undefined) ? '◆' : '◇'}
+                      </button>
+                      <span className="text-slate-300 font-bold">Position Y</span>
+                    </div>
+                    <span className="font-mono text-slate-400">{getPropertyValueAtTime('positionY') > 0 ? '+' : ''}{Math.round(getPropertyValueAtTime('positionY'))}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value={getPropertyValueAtTime('positionY')}
+                    onChange={(e) => handleUpdateProperty('positionY', parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
+                </div>
+
+                {/* Rotation degrees */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[9px] font-bold">
+                    <span className="text-slate-300">Rotation</span>
+                    <span className="font-mono text-slate-400">{(selectedClip.rotation ?? 0)}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-180"
+                    max="180"
+                    step="1"
+                    value={selectedClip.rotation ?? 0}
+                    onChange={(e) => handlePropChange('rotation', parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
+                </div>
+
               </div>
-            </div>
-          )}
+            </CollapsibleSection>
 
-          {/* Shared Visual Clip Enhancements (Transitions & Creative FX Overlays) */}
-          {(selectedClip.type === 'video' || selectedClip.type === 'image') && (
-            <div className={`flex flex-col ${isCompact ? 'gap-3 mt-2.5 pt-2.5' : 'gap-4 mt-3 pt-3'} border-t border-[#2A2A2D]`}>
-              {/* Transition Settings */}
-              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
-                <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles size={11} />
-                  {isLarge ? 'Interactive Entrance Fade and Slide Transitions' : 'Transitions / Fades'}
-                </span>
-
+            {/* 3. Animation Section */}
+            <CollapsibleSection
+              id="animation"
+              title="Animation & Transitions"
+              icon={<Sparkles size={11} />}
+              expanded={!!expandedSections.animation}
+              onToggle={() => toggleSection('animation')}
+            >
+              <div className="flex flex-col gap-2.5">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[9px] text-slate-400 block mb-1">Fade In Type</label>
+                    <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">Fade In Type</label>
                     <select
-                      id="select-inspector-fadein-type"
                       value={selectedClip.fadeInType || 'fade'}
                       onChange={(e) => handlePropChange('fadeInType', e.target.value)}
-                      className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none"
+                      className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none"
                     >
                       <option value="none">None</option>
                       <option value="fade">Fade (Opacity)</option>
@@ -797,33 +822,27 @@ export default function PropertiesPanel({
                       <option value="zoom">Zoom</option>
                     </select>
                   </div>
-
                   <div>
-                    <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                      <span>{isCompact ? 'In Dur' : 'In Duration'}</span>
-                      <span className="font-mono text-[9px]">{(selectedClip.fadeInDuration ?? 0).toFixed(1)}s</span>
-                    </div>
+                    <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">In Duration (s)</label>
                     <input
-                      id="slider-inspector-fadein-duration"
                       type="range"
                       min="0"
                       max="2"
                       step="0.1"
                       value={selectedClip.fadeInDuration ?? 0}
                       onChange={(e) => handlePropChange('fadeInDuration', parseFloat(e.target.value))}
-                      className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10] mt-1"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[9px] text-slate-400 block mb-1">Fade Out Type</label>
+                    <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">Fade Out Type</label>
                     <select
-                      id="select-inspector-fadeout-type"
                       value={selectedClip.fadeOutType || 'fade'}
                       onChange={(e) => handlePropChange('fadeOutType', e.target.value)}
-                      className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none"
+                      className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none"
                     >
                       <option value="none">None</option>
                       <option value="fade">Fade (Opacity)</option>
@@ -832,63 +851,42 @@ export default function PropertiesPanel({
                       <option value="zoom">Zoom</option>
                     </select>
                   </div>
-
                   <div>
-                    <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                      <span>{isCompact ? 'Out Dur' : 'Out Duration'}</span>
-                      <span className="font-mono text-[9px]">{(selectedClip.fadeOutDuration ?? 0).toFixed(1)}s</span>
-                    </div>
+                    <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">Out Duration (s)</label>
                     <input
-                      id="slider-inspector-fadeout-duration"
                       type="range"
                       min="0"
                       max="2"
                       step="0.1"
                       value={selectedClip.fadeOutDuration ?? 0}
                       onChange={(e) => handlePropChange('fadeOutDuration', parseFloat(e.target.value))}
-                      className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10] mt-1"
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* Cross-Clip Transitions between consecutive clips on the same track */}
-              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
-                <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles size={11} className="text-yellow-400 animate-pulse" />
-                  {isLarge ? 'Seamless Cross-Clip Linear Timeline Transitions' : 'Cross-Clip Transition'}
-                </span>
-
-                {nextClip ? (
-                  <div className="flex flex-col gap-3 animate-fadeIn">
-                    <div className="text-[10px] text-emerald-400 font-medium">
-                      {isLarge ? 'Directly connected to following clip' : 'Connected to next'}: <span className="font-semibold text-slate-200">"{nextClip.name}"</span>
-                    </div>
-
+                <div className="border-t border-[#2A2A2D]/40 pt-2 flex flex-col gap-1">
+                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Scissors size={11} className="text-indigo-400" />
+                    Cross-Clip Transition
+                  </span>
+                  {nextClip ? (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[9px] text-slate-400 block mb-1">Effect Type</label>
                         <select
-                          id="select-inspector-transition-type"
                           value={selectedClip.transitionType || 'none'}
                           onChange={(e) => handlePropChange('transitionType', e.target.value)}
-                          className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+                          className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-1.5 py-1 text-[10.5px] text-slate-200 focus:outline-none"
                         >
                           <option value="none">None (Cut)</option>
-                          <option value="fade">Fade (Dip to Black)</option>
-                          <option value="dissolve">Dissolve (Cross-fade)</option>
-                          <option value="slide">Slide (Push)</option>
-                          <option value="wipe">Wipe (Left to Right)</option>
+                          <option value="fade">Dip to Black</option>
+                          <option value="dissolve">Cross Dissolve</option>
+                          <option value="slide">Push Slide</option>
+                          <option value="wipe">Linear Wipe</option>
                         </select>
                       </div>
-
                       <div>
-                        <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                          <span>Duration</span>
-                          <span className="font-mono text-[9px]">{(selectedClip.transitionDuration ?? 1.0).toFixed(1)}s</span>
-                        </div>
                         <input
-                          id="slider-inspector-transition-duration"
                           type="range"
                           min="0.2"
                           max="2.0"
@@ -896,511 +894,977 @@ export default function PropertiesPanel({
                           disabled={!selectedClip.transitionType || selectedClip.transitionType === 'none'}
                           value={selectedClip.transitionDuration ?? 1.0}
                           onChange={(e) => handlePropChange('transitionDuration', parseFloat(e.target.value))}
-                          className={`w-full accent-indigo-500 disabled:opacity-30 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
+                          className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10] mt-1 disabled:opacity-30"
                         />
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="text-[10px] text-slate-500 leading-relaxed font-sans">
-                    {!isCompact ? 'Place two clips side-by-side on this track to enable smooth Fade, Dissolve, Slide, or Wipe transitions between them!' : 'Adjacent clips enable transitions.'}
-                  </div>
-                )}
+                  ) : (
+                    <span className="text-[8px] text-slate-500">Consecutive clips on same track enable transitions.</span>
+                  )}
+                </div>
               </div>
+            </CollapsibleSection>
 
-              {/* Professional Chroma & Luma Keying */}
-              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
-                <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Sliders size={11} />
-                  {isLarge ? 'Hardware Accelerated Alpha Keying & Matte Masks' : 'Background Removal & Keying'}
-                </span>
+            {/* 4. Speed Section */}
+            <CollapsibleSection
+              id="speed"
+              title="Speed"
+              icon={<Clock size={11} />}
+              expanded={!!expandedSections.speed}
+              onToggle={() => toggleSection('speed')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] text-slate-500 block font-bold uppercase">Playback Multiplier</label>
+                <select
+                  value={(selectedClip as VideoClip).speed || 1.0}
+                  onChange={(e) => handlePropChange('speed', parseFloat(e.target.value))}
+                  className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+                >
+                  <option value="0.5">0.5x (Slow Motion)</option>
+                  <option value="1.0">1.0x (Normal Speed)</option>
+                  <option value="1.5">1.5x (Fast Forward)</option>
+                  <option value="2.0">2.0x (Double Speed)</option>
+                </select>
+              </div>
+            </CollapsibleSection>
 
-                {/* Chroma Key (Green Screen) */}
-                <div className="border-b border-[#2A2A2D]/40 pb-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-medium text-slate-200">
+            {/* 5. Audio Section */}
+            <CollapsibleSection
+              id="audio"
+              title="Audio"
+              icon={<Volume2 size={11} />}
+              expanded={!!expandedSections.audio}
+              onToggle={() => toggleSection('audio')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[8px] text-slate-500 font-bold uppercase">Track Volume</span>
+                  <span className="text-[10px] font-mono text-slate-400">{Math.round(((selectedClip as VideoClip).volume ?? 1) * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={(selectedClip as VideoClip).volume ?? 1}
+                  onChange={(e) => handlePropChange('volume', parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* 6. Color Section */}
+            <CollapsibleSection
+              id="color"
+              title="Color grading"
+              icon={<Sliders size={11} />}
+              expanded={!!expandedSections.color}
+              onToggle={() => toggleSection('color')}
+            >
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">Cinematic Filter</label>
+                  <select
+                    value={(selectedClip as VideoClip).filter || 'none'}
+                    onChange={(e) => handlePropChange('filter', e.target.value)}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+                  >
+                    <option value="none">Normal (Rec. 709)</option>
+                    <option value="grayscale">Noir Black &amp; White</option>
+                    <option value="sepia">Vintage Sepia</option>
+                    <option value="invert">Infrared Invert</option>
+                    <option value="warm">Golden Sunset Warmth</option>
+                    <option value="cool">Teal &amp; Orange Cool</option>
+                    <option value="blur">Cinematic Blur</option>
+                    <option value="hue-rotate">Acid Hue Shift</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center text-[8px] font-bold text-slate-500 uppercase mb-0.5">
+                    <span>Brightness</span>
+                    <span className="font-mono text-slate-400">{(selectedClip as VideoClip).brightness ?? 100}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="150"
+                    value={(selectedClip as VideoClip).brightness ?? 100}
+                    onChange={(e) => handlePropChange('brightness', parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center text-[8px] font-bold text-slate-500 uppercase mb-0.5">
+                    <span>Contrast</span>
+                    <span className="font-mono text-slate-400">{(selectedClip as VideoClip).contrast ?? 100}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="150"
+                    value={(selectedClip as VideoClip).contrast ?? 100}
+                    onChange={(e) => handlePropChange('contrast', parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center text-[8px] font-bold text-slate-500 uppercase mb-0.5">
+                    <span>Saturation</span>
+                    <span className="font-mono text-slate-400">{(selectedClip as VideoClip).saturation ?? 100}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={(selectedClip as VideoClip).saturation ?? 100}
+                    onChange={(e) => handlePropChange('saturation', parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* 7. Effects Section */}
+            <CollapsibleSection
+              id="effects"
+              title="Effects & Keys"
+              icon={<Film size={11} />}
+              expanded={!!expandedSections.effects}
+              onToggle={() => toggleSection('effects')}
+            >
+              <div className="flex flex-col gap-2.5">
+                
+                {/* Chroma Key */}
+                <div className="border-b border-[#2A2A2D]/40 pb-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="flex items-center gap-1.5 text-[10px] text-slate-300 font-bold">
                       <input
-                        id="check-chroma-key-enabled"
                         type="checkbox"
                         checked={!!selectedClip.chromaKeyEnabled}
                         onChange={(e) => handlePropChange('chromaKeyEnabled', e.target.checked)}
-                        className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
+                        className="rounded bg-[#0E0E10] border-[#2A2A2D]"
                       />
-                      <span>{isLarge ? 'Chrominance-Based Chroma Key Filter' : 'Chroma Key (Green Screen)'}</span>
+                      Chroma Key
                     </label>
-                    {!isCompact && <span className="text-[9px] bg-indigo-950/40 text-indigo-400 border border-indigo-900/40 px-1 rounded font-mono">PRO</span>}
+                    <span className="text-[7.5px] bg-indigo-950/40 text-indigo-400 border border-indigo-900/40 px-1 rounded font-bold">PRO</span>
                   </div>
-
                   {selectedClip.chromaKeyEnabled && (
-                    <div className="flex flex-col gap-2 mt-2 pl-5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="text-[9px] text-slate-400 block mb-1">Key Color</label>
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              id="color-chroma-key"
-                              type="color"
-                              value={selectedClip.chromaKeyColor || '#00ff00'}
-                              onChange={(e) => handlePropChange('chromaKeyColor', e.target.value)}
-                              className="w-7 h-6 bg-transparent border-0 rounded cursor-pointer p-0"
-                            />
-                            {!isCompact && (
-                              <span className="font-mono text-[10px] text-slate-300">
-                                {selectedClip.chromaKeyColor || '#00ff00'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Quick Color Presets */}
-                        <div className="flex-1">
-                          <label className="text-[9px] text-slate-400 block mb-1">Quick Presets</label>
-                          <div className="flex gap-1.5">
-                            <button
-                              id="btn-chroma-preset-green"
-                              onClick={() => handlePropChange('chromaKeyColor', '#00ff00')}
-                              className="w-4 h-4 rounded-full bg-[#00ff00] border border-white/20 hover:scale-110 transition-transform cursor-pointer"
-                              title="Green Screen"
-                            />
-                            <button
-                              id="btn-chroma-preset-blue"
-                              onClick={() => handlePropChange('chromaKeyColor', '#0000ff')}
-                              className="w-4 h-4 rounded-full bg-[#0000ff] border border-white/20 hover:scale-110 transition-transform cursor-pointer"
-                              title="Blue Screen"
-                            />
-                            <button
-                              id="btn-chroma-preset-magenta"
-                              onClick={() => handlePropChange('chromaKeyColor', '#ff00ff')}
-                              className="w-4 h-4 rounded-full bg-[#ff00ff] border border-white/20 hover:scale-110 transition-transform cursor-pointer"
-                              title="Magenta Screen"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-1">
-                        <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                          <span>Similarity Tolerance</span>
-                          <span className="font-mono text-[9px]">{selectedClip.chromaKeySimilarity ?? 20}%</span>
-                        </div>
+                    <div className="flex flex-col gap-1.5 pl-4 mt-1">
+                      <div className="flex items-center gap-2">
                         <input
-                          id="slider-chroma-key-similarity"
-                          type="range"
-                          min="1"
-                          max="80"
-                          step="1"
-                          value={selectedClip.chromaKeySimilarity ?? 20}
-                          onChange={(e) => handlePropChange('chromaKeySimilarity', parseInt(e.target.value))}
-                          className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
+                          type="color"
+                          value={selectedClip.chromaKeyColor || '#00ff00'}
+                          onChange={(e) => handlePropChange('chromaKeyColor', e.target.value)}
+                          className="w-5 h-5 bg-transparent border-0 cursor-pointer"
                         />
+                        <span className="text-[10px] text-slate-400 font-mono">{selectedClip.chromaKeyColor || '#00ff00'}</span>
                       </div>
-
-                      <div className="mt-1">
-                        <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                          <span>Edge Feather (Smoothness)</span>
-                          <span className="font-mono text-[9px]">{selectedClip.chromaKeySmoothness ?? 10}%</span>
-                        </div>
-                        <input
-                          id="slider-chroma-key-smoothness"
-                          type="range"
-                          min="1"
-                          max="50"
-                          step="1"
-                          value={selectedClip.chromaKeySmoothness ?? 10}
-                          onChange={(e) => handlePropChange('chromaKeySmoothness', parseInt(e.target.value))}
-                          className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
-                        />
-                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="80"
+                        value={selectedClip.chromaKeySimilarity ?? 20}
+                        onChange={(e) => handlePropChange('chromaKeySimilarity', parseInt(e.target.value))}
+                        className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                        title="Similarity Tolerance"
+                      />
                     </div>
                   )}
                 </div>
 
-                {/* Luma Key (Background Remover for Black or White backdrop) */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-medium text-slate-200">
+                {/* Luma Key */}
+                <div className="border-b border-[#2A2A2D]/40 pb-2">
+                  <label className="flex items-center gap-1.5 text-[10px] text-slate-300 font-bold">
+                    <input
+                      type="checkbox"
+                      checked={!!selectedClip.lumaKeyEnabled}
+                      onChange={(e) => handlePropChange('lumaKeyEnabled', e.target.checked)}
+                      className="rounded bg-[#0E0E10] border-[#2A2A2D]"
+                    />
+                    Luma Matte Key
+                  </label>
+                  {selectedClip.lumaKeyEnabled && (
+                    <div className="flex flex-col gap-1.5 pl-4 mt-1">
+                      <select
+                        value={selectedClip.lumaKeyType || 'black'}
+                        onChange={(e) => handlePropChange('lumaKeyType', e.target.value)}
+                        className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-1.5 py-0.5 text-[10.5px]"
+                      >
+                        <option value="black">Remove Black backdrop</option>
+                        <option value="white">Remove White backdrop</option>
+                      </select>
                       <input
-                        id="check-luma-key-enabled"
-                        type="checkbox"
-                        checked={!!selectedClip.lumaKeyEnabled}
-                        onChange={(e) => handlePropChange('lumaKeyEnabled', e.target.checked)}
-                        className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
+                        type="range"
+                        min="1"
+                        max="90"
+                        value={selectedClip.lumaKeyThreshold ?? 15}
+                        onChange={(e) => handlePropChange('lumaKeyThreshold', parseInt(e.target.value))}
+                        className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                        title="Luminance Threshold"
                       />
-                      <span>{isLarge ? 'Luminance Threshold Luma Matte' : 'Luma Key (Matte Remover)'}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Visual Overlays */}
+                <div className="flex flex-col gap-1 text-[10px] text-slate-300 font-bold">
+                  <span>Visual overlays</span>
+                  <div className="grid grid-cols-2 gap-1.5 mt-1">
+                    <label className="flex items-center gap-1.5 font-normal text-[9.5px]">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedClip.effectVignette}
+                        onChange={(e) => handlePropChange('effectVignette', e.target.checked)}
+                        className="rounded bg-[#0E0E10] border-[#2A2A2D]"
+                      />
+                      Vignette
+                    </label>
+                    <label className="flex items-center gap-1.5 font-normal text-[9.5px]">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedClip.effectFilmGrain}
+                        onChange={(e) => handlePropChange('effectFilmGrain', e.target.checked)}
+                        className="rounded bg-[#0E0E10] border-[#2A2A2D]"
+                      />
+                      Film Grain
+                    </label>
+                    <label className="flex items-center gap-1.5 font-normal text-[9.5px]">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedClip.effectScanlines}
+                        onChange={(e) => handlePropChange('effectScanlines', e.target.checked)}
+                        className="rounded bg-[#0E0E10] border-[#2A2A2D]"
+                      />
+                      CRT Lines
+                    </label>
+                    <label className="flex items-center gap-1.5 font-normal text-[9.5px]">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedClip.effectGlitch}
+                        onChange={(e) => handlePropChange('effectGlitch', e.target.checked)}
+                        className="rounded bg-[#0E0E10] border-[#2A2A2D]"
+                      />
+                      Glitch
                     </label>
                   </div>
+                </div>
 
-                  {selectedClip.lumaKeyEnabled && (
-                    <div className="flex flex-col gap-2 mt-2 pl-5">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[9px] text-slate-400 block mb-1">Target Backdrop</label>
-                          <select
-                            id="select-luma-key-type"
-                            value={selectedClip.lumaKeyType || 'black'}
-                            onChange={(e) => handlePropChange('lumaKeyType', e.target.value)}
-                            className="w-full bg-[#161618] border border-[#2A2A2D] rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none"
-                          >
-                            <option value="black">Remove Black (Dark)</option>
-                            <option value="white">Remove White (Light)</option>
-                          </select>
-                        </div>
+              </div>
+            </CollapsibleSection>
 
-                        <div>
-                          <div className="flex justify-between items-center text-[9px] text-slate-400 mb-1">
-                            <span>Threshold Limit</span>
-                            <span className="font-mono text-[9px]">{selectedClip.lumaKeyThreshold ?? 15}%</span>
-                          </div>
-                          <input
-                            id="slider-luma-key-threshold"
-                            type="range"
-                            min="1"
-                            max="90"
-                            step="1"
-                            value={selectedClip.lumaKeyThreshold ?? 15}
-                            onChange={(e) => handlePropChange('lumaKeyThreshold', parseInt(e.target.value))}
-                            className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2 bg-slate-950 rounded' : 'h-1'}`}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
+          </div>
+        )}
+
+        {/* ----------------- TEXT OVERLAY PROPERTIES ----------------- */}
+        {selectedClip.type === 'text' && (
+          <div className="flex flex-col">
+            
+            {/* 1. Text Content & Font */}
+            <CollapsibleSection
+              id="font"
+              title="Font & Content"
+              icon={<FontIcon size={11} />}
+              expanded={!!expandedSections.font}
+              onToggle={() => toggleSection('font')}
+            >
+              <div className="flex flex-col gap-2">
+                <div>
+                  <label className="text-[8px] text-slate-500 font-bold uppercase mb-0.5">Content Text</label>
+                  <textarea
+                    value={(selectedClip as TextClip).text || ''}
+                    onChange={(e) => handlePropChange('text', e.target.value)}
+                    rows={2}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] text-slate-500 font-bold uppercase mb-0.5">Typeface Font</label>
+                  <select
+                    value={(selectedClip as TextClip).fontFamily || 'Inter'}
+                    onChange={(e) => handlePropChange('fontFamily', e.target.value)}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+                  >
+                    <option value="Inter">Inter (Sans-Serif)</option>
+                    <option value="Space Grotesk">Space Grotesk (Tech Display)</option>
+                    <option value="Playfair Display">Playfair Display (Serif)</option>
+                    <option value="JetBrains Mono">JetBrains Mono (Sleek Mono)</option>
+                  </select>
                 </div>
               </div>
+            </CollapsibleSection>
 
-              {/* Creative FX Toggles */}
-              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
-                <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Film size={11} />
-                  {isLarge ? 'Post-Processing Creative FX Overlay Enhancements' : 'Creative FX Overlays'}
-                </span>
+            {/* 2. Size Section */}
+            <CollapsibleSection
+              id="size"
+              title="Size"
+              icon={<Maximize2 size={11} />}
+              expanded={!!expandedSections.size}
+              onToggle={() => toggleSection('size')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[8px] text-slate-500 font-bold uppercase">Font Size</span>
+                  <span className="text-xs font-mono font-bold">{(selectedClip as TextClip).fontSize || 24}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="100"
+                  value={(selectedClip as TextClip).fontSize || 24}
+                  onChange={(e) => handlePropChange('fontSize', parseInt(e.target.value) || 24)}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
 
-                <div className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
+            {/* 3. Color & Background Section */}
+            <CollapsibleSection
+              id="color_text"
+              title="Color & Fill"
+              icon={<Sliders size={11} />}
+              expanded={!!expandedSections.color_text}
+              onToggle={() => toggleSection('color_text')}
+            >
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <label className="text-[8px] text-slate-500 font-bold uppercase block mb-1">Text Fill Color</label>
+                  <div className="flex items-center gap-2">
                     <input
-                      id="check-inspector-fx-vignette"
-                      type="checkbox"
-                      checked={!!selectedClip.effectVignette}
-                      onChange={(e) => handlePropChange('effectVignette', e.target.checked)}
-                      className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
+                      type="color"
+                      value={(selectedClip as TextClip).color || '#ffffff'}
+                      onChange={(e) => handlePropChange('color', e.target.value)}
+                      className="w-6 h-6 border border-[#2A2A2D] bg-[#0E0E10] rounded cursor-pointer"
                     />
-                    <span>{isLarge ? 'Cinematic Dark Vignette Lens Effect' : 'Cinematic Vignette (Soft Edges)'}</span>
-                  </label>
+                    <span className="text-xs font-mono text-slate-300">{(selectedClip as TextClip).color || '#ffffff'}</span>
+                  </div>
+                </div>
 
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
+                <div>
+                  <label className="text-[8px] text-slate-500 font-bold uppercase block mb-1">Box Backdrop Fill</label>
+                  <div className="flex items-center gap-2">
                     <input
-                      id="check-inspector-fx-filmgrain"
-                      type="checkbox"
-                      checked={!!selectedClip.effectFilmGrain}
-                      onChange={(e) => handlePropChange('effectFilmGrain', e.target.checked)}
-                      className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
+                      type="color"
+                      value={(selectedClip as TextClip).backgroundColor === 'transparent' ? '#000000' : (selectedClip as TextClip).backgroundColor}
+                      disabled={(selectedClip as TextClip).backgroundColor === 'transparent'}
+                      onChange={(e) => handlePropChange('backgroundColor', e.target.value)}
+                      className="w-6 h-6 border border-[#2A2A2D] bg-[#0E0E10] rounded cursor-pointer disabled:opacity-30"
                     />
-                    <span>{isLarge ? 'Retro Textured Silver Halide Film Grain' : 'Film Grain (Vintage Noise)'}</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
-                    <input
-                      id="check-inspector-fx-scanlines"
-                      type="checkbox"
-                      checked={!!selectedClip.effectScanlines}
-                      onChange={(e) => handlePropChange('effectScanlines', e.target.checked)}
-                      className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
-                    />
-                    <span>{isLarge ? 'Cathode-Ray Tube (CRT) scanlines overlay' : 'Retro TV Scanlines (CRT Grid)'}</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
-                    <input
-                      id="check-inspector-fx-glitch"
-                      type="checkbox"
-                      checked={!!selectedClip.effectGlitch}
-                      onChange={(e) => handlePropChange('effectGlitch', e.target.checked)}
-                      className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
-                    />
-                    <span>{isLarge ? 'Analog Signal Distortion & Video Glitch' : 'Digital Glitch & Slice Shake'}</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-100 py-0.5">
-                    <input
-                      id="check-inspector-fx-mirror"
-                      type="checkbox"
-                      checked={!!selectedClip.effectMirror}
-                      onChange={(e) => handlePropChange('effectMirror', e.target.checked)}
-                      className="rounded bg-[#161618] border-[#2A2A2D] text-indigo-600 focus:ring-0 w-3.5 h-3.5"
-                    />
-                    <span>{isLarge ? 'Horizontal Mirror Flip Kaleidoscope' : 'Mirror Flip (Horizontal Rotate)'}</span>
-                  </label>
+                    <select
+                      value={(selectedClip as TextClip).backgroundColor === 'transparent' ? 'transparent' : 'colored'}
+                      onChange={(e) => {
+                        const val = e.target.value === 'transparent' ? 'transparent' : '#000000';
+                        handlePropChange('backgroundColor', val);
+                      }}
+                      className="bg-[#0E0E10] border border-[#2A2A2D] rounded text-xs text-slate-200 focus:outline-none"
+                    >
+                      <option value="colored">Colored Solid</option>
+                      <option value="transparent">Transparent backdrop</option>
+                    </select>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            </CollapsibleSection>
 
-          {/* Keyframe Animation Controls Panel */}
-          {(selectedClip.type === 'video' || selectedClip.type === 'image' || selectedClip.type === 'text') && (
-            <div className={`flex flex-col gap-3 mt-3 pt-3 border-t border-[#2A2A2D]`}>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Key size={11} className="animate-pulse" />
-                  {isLarge ? 'Interpolated Temporal Keyframe Motion & Layout Transforms' : 'Keyframe Motion & Transform'}
-                </span>
-                {!isCompact && (
-                  <span className="text-[9px] text-slate-500 font-mono bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-800">
-                    Playhead: {clipTime.toFixed(1)}s
-                  </span>
+            {/* 4. Alignment Section */}
+            <CollapsibleSection
+              id="alignment"
+              title="Alignment & Layout"
+              icon={<Sliders size={11} />}
+              expanded={!!expandedSections.alignment}
+              onToggle={() => toggleSection('alignment')}
+            >
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <label className="text-[8px] text-slate-500 font-bold uppercase block mb-1">Text Alignment</label>
+                  <select
+                    value={(selectedClip as TextClip).alignment || 'center'}
+                    onChange={(e) => handlePropChange('alignment', e.target.value)}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs focus:outline-none"
+                  >
+                    <option value="left">Align Left</option>
+                    <option value="center">Align Center</option>
+                    <option value="right">Align Right</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="flex justify-between items-center text-[8px] font-bold text-slate-500 uppercase mb-1">
+                    <span>Vertical Position (Y%)</span>
+                    <span className="font-mono">{(selectedClip as TextClip).positionY || 50}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="90"
+                    value={(selectedClip as TextClip).positionY || 50}
+                    onChange={(e) => handlePropChange('positionY', parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* 5. Shadow Section */}
+            <CollapsibleSection
+              id="shadow"
+              title="Shadow & Glow Preset"
+              icon={<Sparkles size={11} />}
+              expanded={!!expandedSections.shadow}
+              onToggle={() => toggleSection('shadow')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] text-slate-500 font-bold uppercase block">Shadow Styling Effect</label>
+                <select
+                  value={(selectedClip as TextClip).stylePreset || 'none'}
+                  onChange={(e) => handlePropChange('stylePreset', e.target.value)}
+                  className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+                >
+                  <option value="none">Default Plain Typography</option>
+                  <option value="neon">Neon Ambient Glow Preset</option>
+                  <option value="cyber">Cyberpunk Glitch Offset</option>
+                  <option value="vintage">Vintage Bold Stroke Overlay</option>
+                  <option value="subtitles">Subtitles Black Outer Box Shadow</option>
+                </select>
+              </div>
+            </CollapsibleSection>
+
+            {/* 6. Outline Section */}
+            <CollapsibleSection
+              id="outline"
+              title="Outline"
+              icon={<Film size={11} />}
+              expanded={!!expandedSections.outline}
+              onToggle={() => toggleSection('outline')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[8.5px] text-slate-500 font-bold uppercase">Overlay Outline Stroke</span>
+                <div className="bg-[#0E0E10] p-2 rounded border border-[#2A2A2D]/30 text-[10px] text-slate-400">
+                  Outline width and stroke are configured natively inside the preset designs (Vintage &amp; Neon styles support full vector boundaries).
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* 7. Animation Section */}
+            <CollapsibleSection
+              id="animation_text"
+              title="Animation"
+              icon={<Sparkles size={11} />}
+              expanded={!!expandedSections.animation_text}
+              onToggle={() => toggleSection('animation_text')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] text-slate-500 font-bold uppercase">Intro Entrance Animation</label>
+                <select
+                  value={(selectedClip as TextClip).animation || 'none'}
+                  onChange={(e) => handlePropChange('animation', e.target.value)}
+                  className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs"
+                >
+                  <option value="none">Instant Render (Default)</option>
+                  <option value="fade">Cinema Opacity Fade In</option>
+                  <option value="slide">Left Slide Entrance</option>
+                  <option value="zoom">Elastic Scale Pop</option>
+                  <option value="glitch">CRT Glitch Hologram Flicker</option>
+                </select>
+              </div>
+            </CollapsibleSection>
+
+            {/* 8. Spacing Section */}
+            <CollapsibleSection
+              id="spacing"
+              title="Spacing"
+              icon={<Clock size={11} />}
+              expanded={!!expandedSections.spacing}
+              onToggle={() => toggleSection('spacing')}
+            >
+              <div className="flex flex-col gap-2 bg-[#0E0E10] p-2 rounded border border-[#2A2A2D]/30 text-[10px] text-slate-400">
+                <span>Letter Spacing &amp; Padding are computed automatically to maintain pixel-perfect aspect ratio layout compliance.</span>
+              </div>
+            </CollapsibleSection>
+
+          </div>
+        )}
+
+        {/* ----------------- AUDIO CLIP PROPERTIES ----------------- */}
+        {selectedClip.type === 'audio' && (
+          <div className="flex flex-col">
+            
+            {/* 1. Volume Section */}
+            <CollapsibleSection
+              id="volume"
+              title="Volume"
+              icon={<Volume2 size={11} />}
+              expanded={!!expandedSections.volume}
+              onToggle={() => toggleSection('volume')}
+            >
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[8px] text-slate-500 font-bold uppercase">Volume Gain</span>
+                  <span className="text-xs font-mono font-bold">{Math.round(((selectedClip as AudioClip).volume ?? 1) * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={(selectedClip as AudioClip).volume ?? 1}
+                  onChange={(e) => handlePropChange('volume', parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* 2. Fade In Section */}
+            <CollapsibleSection
+              id="fadein"
+              title="Fade In"
+              icon={<Sparkles size={11} />}
+              expanded={!!expandedSections.fadein}
+              onToggle={() => toggleSection('fadein')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[8px] text-slate-500 font-bold uppercase">Fade In Duration</span>
+                  <span className="text-xs font-mono font-bold">{(selectedClip.fadeInDuration ?? 0).toFixed(1)}s</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="4"
+                  step="0.1"
+                  value={selectedClip.fadeInDuration ?? 0}
+                  onChange={(e) => handlePropChange('fadeInDuration', parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* 3. Fade Out Section */}
+            <CollapsibleSection
+              id="fadeout"
+              title="Fade Out"
+              icon={<Sparkles size={11} />}
+              expanded={!!expandedSections.fadeout}
+              onToggle={() => toggleSection('fadeout')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[8px] text-slate-500 font-bold uppercase">Fade Out Duration</span>
+                  <span className="text-xs font-mono font-bold">{(selectedClip.fadeOutDuration ?? 0).toFixed(1)}s</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="4"
+                  step="0.1"
+                  value={selectedClip.fadeOutDuration ?? 0}
+                  onChange={(e) => handlePropChange('fadeOutDuration', parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* 4. Noise Reduction Section */}
+            <CollapsibleSection
+              id="noise"
+              title="Noise Reduction"
+              icon={<Sliders size={11} />}
+              expanded={!!expandedSections.noise}
+              onToggle={() => toggleSection('noise')}
+            >
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-1.5 text-[10px] text-slate-300 font-bold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!(selectedClip as any).noiseReductionEnabled}
+                    onChange={(e) => handlePropChange('noiseReductionEnabled', e.target.checked)}
+                    className="rounded bg-[#0E0E10] border-[#2A2A2D]"
+                  />
+                  Smart Noise Gate Filter
+                </label>
+                {(selectedClip as any).noiseReductionEnabled && (
+                  <div className="flex flex-col gap-1 pl-4">
+                    <span className="text-[8px] text-slate-500 uppercase font-bold">Threshold limit (dB)</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={(selectedClip as any).noiseReductionThreshold ?? 40}
+                      onChange={(e) => handlePropChange('noiseReductionThreshold', parseInt(e.target.value))}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                    />
+                  </div>
                 )}
               </div>
+            </CollapsibleSection>
 
-              {/* Slider controls with keyframe diamond toggles */}
-              <div className={`flex flex-col gap-3 bg-[#121214] ${isCompact ? 'p-2' : isLarge ? 'p-4' : 'p-3'} rounded-lg border border-[#2A2A2D]`}>
-                
-                {/* Opacity Transform */}
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <div className="flex items-center gap-1">
-                      <button
-                        id="btn-toggle-kf-opacity"
-                        onClick={() => handleToggleKeyframe('opacity')}
-                        className={`text-[12px] font-bold focus:outline-none transition-all duration-150 cursor-pointer ${
-                          selectedClip.keyframes?.some(k => k.opacity !== undefined)
-                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.opacity !== undefined)
-                              ? 'text-indigo-400 scale-125 font-bold'
-                              : 'text-indigo-400/50 hover:text-indigo-400'
-                            : 'text-slate-600 hover:text-slate-400'
-                        }`}
-                        title={selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.opacity !== undefined) ? 'Delete keyframe' : 'Create/Add keyframe'}
-                      >
-                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.opacity !== undefined) ? '◆' : '◇'}
-                      </button>
-                      <span className="text-slate-300 font-medium">
-                        {isLarge ? 'Absolute Transparency / Layer Opacity Value' : isCompact ? 'Opac' : 'Opacity'}
-                      </span>
-                    </div>
-                    <span className="font-mono text-slate-400 text-[10px]">
-                      {Math.round(getPropertyValueAtTime('opacity') * 100)}%
-                    </span>
-                  </div>
-                  <input
-                    id="slider-anim-opacity"
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={getPropertyValueAtTime('opacity')}
-                    onChange={(e) => handleUpdateProperty('opacity', parseFloat(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-850 cursor-pointer rounded' : 'h-1 rounded'}`}
-                  />
+            {/* 5. Pitch Section */}
+            <CollapsibleSection
+              id="pitch"
+              title="Pitch Semitones"
+              icon={<Sliders size={11} />}
+              expanded={!!expandedSections.pitch}
+              onToggle={() => toggleSection('pitch')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center mb-0.5">
+                  <span className="text-[8px] text-slate-500 font-bold uppercase">Pitch Shift</span>
+                  <span className="text-xs font-mono font-bold">{(selectedClip as any).pitch ?? 0} semitones</span>
                 </div>
+                <input
+                  type="range"
+                  min="-12"
+                  max="12"
+                  step="1"
+                  value={(selectedClip as any).pitch ?? 0}
+                  onChange={(e) => handlePropChange('pitch', parseInt(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
 
-                {/* Scale Transform */}
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <div className="flex items-center gap-1">
-                      <button
-                        id="btn-toggle-kf-scale"
-                        onClick={() => handleToggleKeyframe('scale')}
-                        className={`text-[12px] font-bold focus:outline-none transition-all duration-150 cursor-pointer ${
-                          selectedClip.keyframes?.some(k => k.scale !== undefined)
-                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.scale !== undefined)
-                              ? 'text-indigo-400 scale-125 font-bold'
-                              : 'text-indigo-400/50 hover:text-indigo-400'
-                            : 'text-slate-600 hover:text-slate-400'
-                        }`}
-                        title="Toggle scale keyframe"
-                      >
-                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.scale !== undefined) ? '◆' : '◇'}
-                      </button>
-                      <span className="text-slate-300 font-medium">
-                        {isLarge ? 'Uniform Geometric Scale Factor Dimension' : isCompact ? 'Scale' : 'Scale (Size)'}
-                      </span>
-                    </div>
-                    <span className="font-mono text-slate-400 text-[10px]">
-                      {getPropertyValueAtTime('scale').toFixed(2)}x
-                    </span>
+            {/* 6. Speed Section */}
+            <CollapsibleSection
+              id="speed_audio"
+              title="Speed Multiplier"
+              icon={<Clock size={11} />}
+              expanded={!!expandedSections.speed_audio}
+              onToggle={() => toggleSection('speed_audio')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] text-slate-500 font-bold uppercase block">Audio Frequency Rate</label>
+                <select
+                  value={(selectedClip as any).speed || 1.0}
+                  onChange={(e) => handlePropChange('speed', parseFloat(e.target.value))}
+                  className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs"
+                >
+                  <option value="0.5">0.5x Frequency (Drawn Down)</option>
+                  <option value="1.0">1.0x Normal frequency</option>
+                  <option value="1.5">1.5x Accelerated Speed</option>
+                  <option value="2.0">2.0x High Pitch Speed</option>
+                </select>
+              </div>
+            </CollapsibleSection>
+
+            {/* 7. Waveform Section */}
+            <CollapsibleSection
+              id="waveform"
+              title="Audio Waveform"
+              icon={<Activity size={11} />}
+              expanded={!!expandedSections.waveform}
+              onToggle={() => toggleSection('waveform')}
+            >
+              <div className="flex flex-col gap-1 bg-[#0E0E10] p-2 rounded border border-[#2A2A2D]/40">
+                <span className="text-[8px] text-slate-500 uppercase tracking-wider font-extrabold block">Live Waveform Monitor</span>
+                <div className="h-10 w-full bg-slate-950/60 rounded flex items-center justify-center gap-0.5 px-2 relative overflow-hidden mt-1">
+                  {/* Generated visual waveform bars */}
+                  {Array.from({ length: 28 }).map((_, i) => {
+                    const h = 5 + Math.sin(i * 0.4) * 12 + Math.cos(i * 0.8) * 10 + Math.random() * 8;
+                    return (
+                      <div
+                        key={i}
+                        className="w-[2px] bg-emerald-500/80 rounded"
+                        style={{ height: `${Math.max(2, Math.min(34, h))}px` }}
+                      />
+                    );
+                  })}
+                  <div className="absolute top-1 right-2 text-[7px] font-bold text-emerald-400 uppercase tracking-widest font-mono">
+                    procedural synth
                   </div>
-                  <input
-                    id="slider-anim-scale"
-                    type="range"
-                    min="0.1"
-                    max="3.0"
-                    step="0.05"
-                    value={getPropertyValueAtTime('scale')}
-                    onChange={(e) => handleUpdateProperty('scale', parseFloat(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-855 cursor-pointer rounded' : 'h-1 rounded'}`}
-                  />
                 </div>
+              </div>
+            </CollapsibleSection>
 
-                {/* Position X Offset */}
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <div className="flex items-center gap-1">
-                      <button
-                        id="btn-toggle-kf-position-x"
-                        onClick={() => handleToggleKeyframe('positionX')}
-                        className={`text-[12px] font-bold focus:outline-none transition-all duration-150 cursor-pointer ${
-                          selectedClip.keyframes?.some(k => k.positionX !== undefined)
-                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionX !== undefined)
-                              ? 'text-indigo-400 scale-125 font-bold'
-                              : 'text-indigo-400/50 hover:text-indigo-400'
-                            : 'text-slate-600 hover:text-slate-400'
-                        }`}
-                        title="Toggle X offset keyframe"
-                      >
-                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionX !== undefined) ? '◆' : '◇'}
-                      </button>
-                      <span className="text-slate-300 font-medium">
-                        {isLarge ? 'Horizontal X-Axis Coordinate Location Offset' : isCompact ? 'Pos X' : 'Position X (Offset)'}
-                      </span>
-                    </div>
-                    <span className="font-mono text-slate-400 text-[10px]">
-                      {getPropertyValueAtTime('positionX') > 0 ? '+' : ''}{Math.round(getPropertyValueAtTime('positionX'))}%
-                    </span>
+          </div>
+        )}
+
+        {/* ----------------- IMAGE PROPERTIES ----------------- */}
+        {selectedClip.type === 'image' && (
+          <div className="flex flex-col">
+            
+            {/* 1. Position Section */}
+            <CollapsibleSection
+              id="position"
+              title="Position"
+              icon={<Compass size={11} />}
+              expanded={!!expandedSections.position}
+              onToggle={() => toggleSection('position')}
+            >
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold mb-0.5">
+                    <span className="text-slate-300">Horizontal Offset (X)</span>
+                    <span className="font-mono text-slate-400">{Math.round(getPropertyValueAtTime('positionX'))}%</span>
                   </div>
                   <input
-                    id="slider-anim-position-x"
                     type="range"
                     min="-100"
                     max="100"
-                    step="1"
                     value={getPropertyValueAtTime('positionX')}
                     onChange={(e) => handleUpdateProperty('positionX', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-860 cursor-pointer rounded' : 'h-1 rounded'}`}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
                   />
                 </div>
-
-                {/* Position Y Offset */}
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <div className="flex items-center gap-1">
-                      <button
-                        id="btn-toggle-kf-position-y"
-                        onClick={() => handleToggleKeyframe('positionY')}
-                        className={`text-[12px] font-bold focus:outline-none transition-all duration-150 cursor-pointer ${
-                          selectedClip.keyframes?.some(k => k.positionY !== undefined)
-                            ? selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionY !== undefined)
-                              ? 'text-indigo-400 scale-125 font-bold'
-                              : 'text-indigo-400/50 hover:text-indigo-400'
-                            : 'text-slate-600 hover:text-slate-400'
-                        }`}
-                        title="Toggle Y position keyframe"
-                      >
-                        {selectedClip.keyframes?.some(k => Math.abs(k.time - clipTime) < 0.1 && k.positionY !== undefined) ? '◆' : '◇'}
-                      </button>
-                      <span className="text-slate-300 font-medium">
-                        {selectedClip.type === 'text' 
-                          ? (isLarge ? 'Vertical Y-Axis Canvas Position' : 'Vertical Position') 
-                          : (isLarge ? 'Vertical Y-Axis Coordinate Location Offset' : isCompact ? 'Pos Y' : 'Position Y (Offset)')}
-                      </span>
-                    </div>
-                    <span className="font-mono text-slate-400 text-[10px]">
-                      {selectedClip.type === 'text' ? '' : (getPropertyValueAtTime('positionY') > 0 ? '+' : '')}
-                      {Math.round(getPropertyValueAtTime('positionY'))}%
-                    </span>
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold mb-0.5">
+                    <span className="text-slate-300">Vertical Offset (Y)</span>
+                    <span className="font-mono text-slate-400">{Math.round(getPropertyValueAtTime('positionY'))}%</span>
                   </div>
                   <input
-                    id="slider-anim-position-y"
                     type="range"
-                    min={selectedClip.type === 'text' ? "0" : "-100"}
+                    min="-100"
                     max="100"
-                    step="1"
                     value={getPropertyValueAtTime('positionY')}
                     onChange={(e) => handleUpdateProperty('positionY', parseInt(e.target.value))}
-                    className={`w-full accent-indigo-500 ${isCompact ? 'h-1' : isLarge ? 'h-2.5 bg-slate-950 border border-slate-865 cursor-pointer rounded' : 'h-1 rounded'}`}
+                    className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
                   />
                 </div>
-
               </div>
+            </CollapsibleSection>
 
-              {/* Active Keyframes Timeline List */}
-              {selectedClip.keyframes && selectedClip.keyframes.length > 0 && (
-                <div className="flex flex-col gap-2 bg-[#0F0F10] p-3 rounded-lg border border-[#2A2A2D]">
-                  <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold uppercase tracking-wider">
-                    <span className="flex items-center gap-1 text-slate-400">
-                      <span>◆</span> {isLarge ? 'Active Multi-Parameter Interpolation Keyframes' : 'Keyframes'} ({selectedClip.keyframes.length})
-                    </span>
-                    <button
-                      id="btn-clear-keyframes"
-                      onClick={() => handlePropChange('keyframes', [])}
-                      className="text-red-400 hover:text-red-300 transition-colors text-[9px] font-bold cursor-pointer"
-                    >
-                      Clear All
-                    </button>
+            {/* 2. Scale Section */}
+            <CollapsibleSection
+              id="scale"
+              title="Scale"
+              icon={<Maximize2 size={11} />}
+              expanded={!!expandedSections.scale}
+              onToggle={() => toggleSection('scale')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[9px] font-bold mb-0.5">
+                  <span className="text-slate-300">Uniform Size Scale</span>
+                  <span className="font-mono text-slate-400">{getPropertyValueAtTime('scale').toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="3"
+                  step="0.05"
+                  value={getPropertyValueAtTime('scale')}
+                  onChange={(e) => handleUpdateProperty('scale', parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* 3. Rotation Section */}
+            <CollapsibleSection
+              id="rotation"
+              title="Rotation"
+              icon={<RotateCw size={11} />}
+              expanded={!!expandedSections.rotation}
+              onToggle={() => toggleSection('rotation')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[9px] font-bold mb-0.5">
+                  <span className="text-slate-300">Rotation Degrees</span>
+                  <span className="font-mono text-slate-400">{(selectedClip.rotation ?? 0)}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="-180"
+                  max="180"
+                  value={selectedClip.rotation ?? 0}
+                  onChange={(e) => handlePropChange('rotation', parseInt(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* 4. Opacity Section */}
+            <CollapsibleSection
+              id="opacity"
+              title="Opacity"
+              icon={<Sliders size={11} />}
+              expanded={!!expandedSections.opacity}
+              onToggle={() => toggleSection('opacity')}
+            >
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[9px] font-bold mb-0.5">
+                  <span className="text-slate-300">Layer Transparency</span>
+                  <span className="font-mono text-slate-400">{Math.round(getPropertyValueAtTime('opacity') * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={getPropertyValueAtTime('opacity')}
+                  onChange={(e) => handleUpdateProperty('opacity', parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* 5. Crop Section */}
+            <CollapsibleSection
+              id="crop"
+              title="Crop Canvas"
+              icon={<Film size={11} />}
+              expanded={!!expandedSections.crop}
+              onToggle={() => toggleSection('crop')}
+            >
+              <div className="flex flex-col gap-2 bg-[#0E0E10]/40 p-2 rounded border border-[#2A2A2D]/30">
+                <span className="text-[8px] font-bold uppercase text-slate-500 block mb-1">Canvas Margin Crop</span>
+                
+                <div className="flex flex-col gap-2">
+                  <div>
+                    <div className="flex justify-between items-center text-[8.5px] text-slate-400 mb-0.5 font-bold">
+                      <span>Crop Left</span>
+                      <span className="font-mono">{selectedClip.cropLeft ?? 0}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="80"
+                      value={selectedClip.cropLeft ?? 0}
+                      onChange={(e) => handlePropChange('cropLeft', parseInt(e.target.value))}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                    />
                   </div>
-                  <div className="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
-                    {[...selectedClip.keyframes]
-                      .sort((a, b) => a.time - b.time)
-                      .map(kf => {
-                        const props = [];
-                        if (kf.opacity !== undefined) props.push(`Op: ${Math.round(kf.opacity * 100)}%`);
-                        if (kf.scale !== undefined) props.push(`Sc: ${kf.scale.toFixed(1)}x`);
-                        if (kf.positionX !== undefined) props.push(`X: ${Math.round(kf.positionX)}%`);
-                        if (kf.positionY !== undefined) props.push(`Y: ${Math.round(kf.positionY)}%`);
-
-                        return (
-                          <div key={kf.id} className="flex justify-between items-center bg-[#161618] px-2 py-1.5 rounded text-[10px] border border-[#2A2A2D]/60 hover:border-slate-700 transition-all duration-150">
-                            <div className="flex items-center gap-1.5 font-mono text-indigo-400">
-                              <span>◆</span>
-                              <span>{kf.time.toFixed(1)}s</span>
-                            </div>
-                            <div className="text-slate-400 truncate flex-1 text-center px-2 text-[9px]">
-                              {props.join(' | ')}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              {onSeek && (
-                                <button
-                                  id={`btn-jump-kf-${kf.id}`}
-                                  onClick={() => {
-                                    onSeek(selectedClip.start + kf.time);
-                                  }}
-                                  className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-950/40 border border-indigo-900/40 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-                                  title="Jump playhead to keyframe time"
-                                >
-                                  Seek
-                                </button>
-                              )}
-                              <button
-                                id={`btn-delete-kf-${kf.id}`}
-                                onClick={() => {
-                                  const updated = selectedClip.keyframes?.filter(k => k.id !== kf.id) || [];
-                                  handlePropChange('keyframes', updated);
-                                }}
-                                className="text-slate-500 hover:text-red-400 transition-colors p-0.5 cursor-pointer"
-                                title="Delete keyframe point"
-                              >
-                                <Trash2 size={11} />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                  <div>
+                    <div className="flex justify-between items-center text-[8.5px] text-slate-400 mb-0.5 font-bold">
+                      <span>Crop Right</span>
+                      <span className="font-mono">{selectedClip.cropRight ?? 0}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="80"
+                      value={selectedClip.cropRight ?? 0}
+                      onChange={(e) => handlePropChange('cropRight', parseInt(e.target.value))}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center text-[8.5px] text-slate-400 mb-0.5 font-bold">
+                      <span>Crop Top</span>
+                      <span className="font-mono">{selectedClip.cropTop ?? 0}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="80"
+                      value={selectedClip.cropTop ?? 0}
+                      onChange={(e) => handlePropChange('cropTop', parseInt(e.target.value))}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center text-[8.5px] text-slate-400 mb-0.5 font-bold">
+                      <span>Crop Bottom</span>
+                      <span className="font-mono">{selectedClip.cropBottom ?? 0}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="80"
+                      value={selectedClip.cropBottom ?? 0}
+                      onChange={(e) => handlePropChange('cropBottom', parseInt(e.target.value))}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                    />
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            </CollapsibleSection>
 
-          {/* Delete clip */}
-          <div className="border-t border-[#2A2A2D] pt-3 flex justify-end">
-            <button
-              id="btn-inspector-delete"
-              onClick={handleTriggerDelete}
-              className="py-1.5 px-3 bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 rounded text-red-400 hover:text-red-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            {/* 6. Animation Section */}
+            <CollapsibleSection
+              id="animation_img"
+              title="Animation"
+              icon={<Sparkles size={11} />}
+              expanded={!!expandedSections.animation_img}
+              onToggle={() => toggleSection('animation_img')}
             >
-              <Trash2 size={13} /> Delete Clip
-            </button>
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">Fade In</label>
+                    <select
+                      value={selectedClip.fadeInType || 'fade'}
+                      onChange={(e) => handlePropChange('fadeInType', e.target.value)}
+                      className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none"
+                    >
+                      <option value="none">None</option>
+                      <option value="fade">Opacity</option>
+                      <option value="slide-left">Slide Left</option>
+                      <option value="slide-right">Slide Right</option>
+                      <option value="zoom">Scale Pop</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">Duration (s)</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      value={selectedClip.fadeInDuration ?? 0}
+                      onChange={(e) => handlePropChange('fadeInDuration', parseFloat(e.target.value))}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10] mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* 7. Mask Section */}
+            <CollapsibleSection
+              id="mask"
+              title="Mask Shapes"
+              icon={<Sliders size={11} />}
+              expanded={!!expandedSections.mask}
+              onToggle={() => toggleSection('mask')}
+            >
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <label className="text-[8px] text-slate-500 block mb-0.5 font-bold uppercase">Clipping Mask Type</label>
+                  <select
+                    value={selectedClip.maskType || 'none'}
+                    onChange={(e) => handlePropChange('maskType', e.target.value)}
+                    className="w-full bg-[#0E0E10] border border-[#2A2A2D] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+                  >
+                    <option value="none">No Mask Clipping</option>
+                    <option value="circle">Circular Alpha Mask</option>
+                    <option value="rectangle">Rectangular Box Mask</option>
+                    <option value="linear">Vertical Linear Split</option>
+                  </select>
+                </div>
+                {selectedClip.maskType && selectedClip.maskType !== 'none' && (
+                  <div>
+                    <div className="flex justify-between items-center text-[8.5px] font-bold text-slate-500 uppercase mb-0.5">
+                      <span>Mask Boundary Size</span>
+                      <span className="font-mono text-slate-400">{selectedClip.maskSize ?? 50}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="100"
+                      value={selectedClip.maskSize ?? 50}
+                      onChange={(e) => handlePropChange('maskSize', parseInt(e.target.value))}
+                      className="w-full accent-indigo-500 h-1 rounded bg-[#0E0E10]"
+                    />
+                  </div>
+                )}
+              </div>
+            </CollapsibleSection>
+
           </div>
-        </div>
-      ) : (
-        /* Empty properties State: minimal placeholder */
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 h-full text-slate-500 gap-3 animate-fadeIn">
-          <Sliders size={24} className="text-slate-600 mb-1" />
-          <div>
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">No clip selected</h3>
-            <p className="text-[10.5px] text-slate-500 mt-1 max-w-[200px] mx-auto leading-normal">
-              Select any clip on the timeline to inspect and edit its properties.
-            </p>
-          </div>
-        </div>
-      )}
+        )}
+
+      </div>
+
+      {/* Delete clip / Footer controls */}
+      <div className="border-t border-[#2A2A2D] p-3 flex justify-end shrink-0 bg-[#0E0E10]/80">
+        <button
+          id="btn-inspector-delete"
+          onClick={handleTriggerDelete}
+          className="py-1.5 px-3 bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 rounded text-red-400 hover:text-red-300 text-[10.5px] font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer active:scale-95 uppercase tracking-wide"
+        >
+          <Trash2 size={12} /> Delete Clip
+        </button>
+      </div>
     </div>
   );
 }

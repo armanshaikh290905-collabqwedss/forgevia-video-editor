@@ -54,6 +54,15 @@ export interface BaseClip {
   lumaKeyEnabled?: boolean;
   lumaKeyType?: 'black' | 'white';
   lumaKeyThreshold?: number; // threshold 0 to 100
+
+  // Rotation, Crop, and Mask layouts
+  rotation?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropTop?: number;
+  cropBottom?: number;
+  maskType?: 'none' | 'circle' | 'rectangle' | 'linear';
+  maskSize?: number;
 }
 
 export interface VideoClip extends BaseClip {

@@ -676,6 +676,50 @@ export default function PreviewPlayer({
         targetCtx.translate(-width / 2, -height / 2);
       }
 
+      // Professional Rotation Transform
+      const rotation = clip.rotation ?? 0;
+      if (rotation !== 0) {
+        targetCtx.translate(width / 2, height / 2);
+        targetCtx.rotate((rotation * Math.PI) / 180);
+        targetCtx.translate(-width / 2, -height / 2);
+      }
+
+      // Professional Cropping Tool
+      const cropLeft = clip.cropLeft ?? 0;
+      const cropRight = clip.cropRight ?? 0;
+      const cropTop = clip.cropTop ?? 0;
+      const cropBottom = clip.cropBottom ?? 0;
+      if (cropLeft > 0 || cropRight > 0 || cropTop > 0 || cropBottom > 0) {
+        targetCtx.beginPath();
+        const cx = (cropLeft / 100) * width;
+        const cy = (cropTop / 100) * height;
+        const cw = Math.max(1, width - cx - (cropRight / 100) * width);
+        const ch = Math.max(1, height - cy - (cropBottom / 100) * height);
+        targetCtx.rect(cx, cy, cw, ch);
+        targetCtx.clip();
+      }
+
+      // Professional Masking Tool
+      const maskType = clip.maskType || 'none';
+      const maskSize = clip.maskSize ?? 50;
+      if (maskType !== 'none') {
+        targetCtx.beginPath();
+        if (maskType === 'circle') {
+          const radius = (maskSize / 100) * Math.min(width, height) / 2;
+          targetCtx.arc(width / 2, height / 2, Math.max(1, radius), 0, Math.PI * 2);
+          targetCtx.clip();
+        } else if (maskType === 'rectangle') {
+          const mw = (maskSize / 100) * width;
+          const mh = (maskSize / 100) * height;
+          targetCtx.rect((width - mw) / 2, (height - mh) / 2, Math.max(1, mw), Math.max(1, mh));
+          targetCtx.clip();
+        } else if (maskType === 'linear') {
+          const splitX = (maskSize / 100) * width;
+          targetCtx.rect(0, 0, Math.max(1, splitX), height);
+          targetCtx.clip();
+        }
+      }
+
       // Creative FX: Mirror Horizontal
       if (clip.effectMirror) {
         targetCtx.translate(width, 0);
